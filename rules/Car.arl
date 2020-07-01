@@ -1,0 +1,66 @@
+ruleset Car {
+	import java.lang.Math;
+	import java.util.ArrayList;
+	import simulation.Agent;
+	import simulation.Simulation;
+	import simulation.AgentState;
+	import simulation.Position;
+	
+  	variables {
+		Agent agent;
+		ArrayList cur_state;
+		AgentState my_state;
+		Integer speed;
+		Integer n_messages = 0;
+		Integer[] speed_value; 
+		Integer turn;
+		Integer i;
+		Integer len;
+		ArrayList colliding_traj;
+	}
+
+	inputs{agent, cur_state};
+
+	outputs{speed, n_messages};
+	
+	void preProcess() {
+	: speed_value = new Integer[agent.max_speed];
+	: for(i = 0; i < cur_state.size(); ++i) {
+			wm.assert(cur_state.get(i));
+		}
+	}
+
+	void process() using Script {
+	: my_state = cur_state.get(agent.getAgentId());
+	: len = agent.getLength();
+	: for(i = 0 ; i < agent.getMaxSpeed() ; i = i + 1) { 
+			invokeRuleBlock("valueSpeeds(Integer)", new Object[] {i});
+		}
+	}
+
+//	void postProcess() {
+//	}
+	
+	//For each possible speed estimates how long it will take to escape intersection
+	//TODO add more factors (niceness, pragmaticality, occasion to earn tokens)
+	void valueSpeeds(Integer speed) using Forward {
+	: if(agent.getDest() == my_state.dest) then
+		turn = (agent.getDest().num - agent.getFrom().num + 4) % 4;
+	: if(agent.getDest() != my_state.dest) then
+		turn = (agent.getFrom().num - agent.getDest().num + 4) % 4;
+	: if(my_state.dest == my_state.place) then
+		//If I'm after intersection, then assume that will go with max speed
+		speed_value[speed] = (len - my_state.position - 1) / agent.max_speed + 1;
+	}
+	
+	
+	//Finds all cars that have trajectories colliding with mine and are starting in different side of intersection 
+	void collidingTrajectories() using PatternMatchRete {
+	: i = 0;
+	: when( AgentState car ( car.place != car.dest and car.place != my_state.place and
+		car.dest == agent.dest or (turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
+		(turn == 1 and !(car.place == (my_state.place.num + 1) % 4 and car.dest == my_state.place))) ) do {
+			colliding_traj.add(car);
+		}
+	}
+}
