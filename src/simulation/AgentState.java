@@ -17,5 +17,5 @@ public final class AgentState {
 		this.dest = dest;
 		this.waiting_time = waiting_time;
 		this.max_speed = max_speed;
-	}
+	} 
 }

@@ -13,29 +13,7 @@ import com.ibm.able.AbleEvent;
 import com.ibm.able.AbleException;
 
 public class Simulation extends AbleDefaultAgent {
-		
-	//4 ends of intersection and center
-//	public enum Position {
-//		N(0), E(1), S(2), W(3), C(-1);
-//		
-//		public final int num;
-//		
-//		private Position(int num) {
-//			this.num = num;
-//		}
-//		
-//		public static Position fromString(String c) {
-//			switch(c) {
-//			case "N": return N;
-//			case "E": return E;
-//			case "S": return S;
-//			case "W": return W;
-//			//case "C": return C;
-//			default: throw new IllegalArgumentException();
-//			}
-//		}
-//	}
-	
+			
 	private static Random rand = new Random();
 	private int length;
 	private int steps;
@@ -98,11 +76,19 @@ public class Simulation extends AbleDefaultAgent {
 	public void processAbleEvent(AbleEvent evt) throws AbleException {
 		if(evt.getArgObject() instanceof Message.FinishedStep) {
 			Message.FinishedStep msg = (Message.FinishedStep) evt.getArgObject();
-			sum_messages += msg.num_messages;
 			finished.set(msg.agent_id);
-			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + msg.num_messages);
+			sum_messages++;
+			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
 			if(finished.cardinality() == agents.size())
 				finishRound();
+		} else if(evt.getArgObject() instanceof Message.Accept) {
+			Message.Accept msg = (Message.Accept) evt.getArgObject();
+			sum_messages++;
+			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
+		} else if(evt.getArgObject() instanceof Message.Offer) {
+			Message.Offer msg = (Message.Offer) evt.getArgObject();
+			sum_messages++;
+			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
 		}
 	}
 	

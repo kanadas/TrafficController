@@ -1,10 +1,19 @@
+//Bidding rules:
+//Every agent either passes and let everyone go, or sends it's offer
+//After getting decisions from all other agents, agent processes them and decides what can he accept
+//Agent may accept lower offer than his, but cannot refuse higher offer (it guarantees consensus in one step -- there is always highest offer)
+//If agent accepts some speed, it accepts all higher speeds (logical and needed for easy consensus)
+//If two agents accept each other, then: 1. if some let lower offer go first, then it stays 2. wins bigger difference in offers 3. wins earlier offer 
 ruleset Car {
 	import java.lang.Math;
 	import java.util.ArrayList;
+	import java.util.Collections;
 	import simulation.Agent;
 	import simulation.Simulation;
 	import simulation.AgentState;
 	import simulation.Position;
+	import simulation.IntersectionPlace;
+	import com.ibm.able.rules.AbleOclCollection;
 	
   	variables {
 		Agent agent;
@@ -12,30 +21,59 @@ ruleset Car {
 		AgentState my_state;
 		Integer speed;
 		Integer n_messages = 0;
-		Integer[] speed_value; 
+		Integer[] speed_value;
 		Integer turn;
 		Integer i;
+		Integer j;
+//		Integer k;
 		Integer len;
-		ArrayList colliding_traj;
+		Integer max_dist;
+		Integer min_dist;
+
+		AgentState car;
+		Expression Collides = car.place != car.dest and (car.place != my_state.place or car.position > my_state.position) and 
+			car.dest == agent.dest or 
+			(turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
+			(turn == 1 and !(car.place == (my_state.place.num + 1) % 4 and car.dest == my_state.place));
+		Selector colliding_cars = new Selector(this.getVariable("car"), Collides, true);
+		AbleOclCollection state_col;
+		AbleOclCollection colliding;
+		ArrayList intersection = new ArrayList;
+		Integer fst_inters;
+		Integer lst_inters;
+		Integer inters_len;
+		ArrayList inters_path = new ArrayList;
+		IntersectionPlace temp;
+		IntersectionPlace temp2;
+		Float multiplier;
+		Float tmp;
+		
+		Float max_spend;
+		Float sum_wait;
+		ArrayList offers;
 	}
 
 	inputs{agent, cur_state};
 
 	outputs{speed, n_messages};
-	
+
 	void preProcess() {
-	: speed_value = new Integer[agent.max_speed];
-	: for(i = 0; i < cur_state.size(); ++i) {
-			wm.assert(cur_state.get(i));
-		}
+	: speed_value = new Integer[my_state.max_speed];
 	}
 
+	//TODO move this to Forward or something, to not count graph when not needed
 	void process() using Script {
 	: my_state = cur_state.get(agent.getAgentId());
 	: len = agent.getLength();
-	: for(i = 0 ; i < agent.getMaxSpeed() ; i = i + 1) { 
-			invokeRuleBlock("valueSpeeds(Integer)", new Object[] {i});
+	: state_col = new AbleOclCollection(cur_state);
+	: colliding = state_col.collect(colliding_cars);
+	: wm.assertAll(colliding.asSequence());
+	: max_dist = my_state.max_speed;
+	: min_dist = my_state.max_speed;
+	: for(i = 0; i < 4; ++i) {
+			intersection.add(new IntersectionPlace(i, len));
 		}
+	:wm.assertAll(intersection);
 	}
 
 //	void postProcess() {
@@ -43,24 +81,123 @@ ruleset Car {
 	
 	//For each possible speed estimates how long it will take to escape intersection
 	//TODO add more factors (niceness, pragmaticality, occasion to earn tokens)
-	void valueSpeeds(Integer speed) using Forward {
+	void computeSpeed() using Forward {
 	: if(agent.getDest() == my_state.dest) then
 		turn = (agent.getDest().num - agent.getFrom().num + 4) % 4;
 	: if(agent.getDest() != my_state.dest) then
 		turn = (agent.getFrom().num - agent.getDest().num + 4) % 4;
+	//Set first and last positions on intersection center
+	: if(my_state.place != Position.C) then
+		fst_inters = my_state.place.num;
+	: if(my_state.place == Position.C) then
+		fst_inters = my_state.position;
+	: lst_inters = (my_state.dest.num + 1) % 4;
+	: inters_len = (fst_inters - lst_inters + 4) % 4;
 	: if(my_state.dest == my_state.place) then
-		//If I'm after intersection, then assume that will go with max speed
-		speed_value[speed] = (len - my_state.position - 1) / agent.max_speed + 1;
+			//If I'm after intersection, then greedly take max possible speed
+			speed = max_dist;
+	: if(my_state.dest != my_state.place and my_state.place != Position.C and my_state.position + max_dist < len) then {
+			//If I cannot arrive intersection, act greedly (TODO proposing car in front of me to move)
+			speed = max_dist;
+		}
+	: if(min_dist == max_dist) then {
+			speed = max_dist;
+		}
+//	: if(my_state.dest != my_state.place and (my_state.place == Position.C or my_state.position + max_dist >= len)) then {
 	}
 	
 	
-	//Finds all cars that have trajectories colliding with mine and are starting in different side of intersection 
-	void collidingTrajectories() using PatternMatchRete {
-	: i = 0;
-	: when( AgentState car ( car.place != car.dest and car.place != my_state.place and
-		car.dest == agent.dest or (turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
-		(turn == 1 and !(car.place == (my_state.place.num + 1) % 4 and car.dest == my_state.place))) ) do {
-			colliding_traj.add(car);
+	//Only option for getting here is possibility of crossing intersection this moment
+	//and having possible collision after min_dist steps
+	void computeOffer() using Script {
+	//Simple rule for now
+	: max_spend = ((Float) agent.getHaste()) / 5 * agent.getPoints();
+	: i = (fst_inters - min_dist + 4) % 4;
+	: if(my_state.place != Position.C)
+		i = (fst_inters - (min_dist - (len - my_state.position)) + 4) % 4;
+	: temp = inters_path.get(i);
+	: sum_wait = temp.expect_tot_time;
+	: for( j = 0; j < i; j = j + 1) {
+			offers.add(0);
+		}
+	: for( ; i < inters_path.size(); i = i + 1) {
+			temp = inters_path.get(i);
+			tmp = temp.expect_tot_time / sum_wait * max_spend;
+			j = Math.round(tmp);
+			offers.add(j);
+		}
+	} 
+
+	void valuePlaces() using Script {
+	: Collections.sort(inters_path); //sort ascending by distance
+	
+	: if(inters_len != inters_path.size()) traceFormat("BUG: inters_len = %d inters_path.size = %d", new Object[] {inters_len, inters_path.size()});
+	: temp = inters_path.get(0);
+	: if(inters_path.size() > 0 and (fst_inters - 1) % 4 != temp.id)  traceFormat("BUG: fst_inters = %d inters_path.first = %d", new Object[] {fst_inters, temp});
+	
+	: for(i = inters_path.size() - 1 ; i >= 0 ; i = i - 1) {
+			temp = inters_path.get(i);
+			temp.expect_wait_time = 0;
+			invokeRuleBlock("expectedWaiting(Integer)", new Object[] {i}); //cannot nest loops 
+			temp.expect_tot_time = ((int) (inters_len - i - 1) / agent.getMaxSpeed() + 1) + temp.expect_wait_time;
 		}
 	}
+	
+	void expectedWaiting(Integer place_idx) using Script {
+	: j = 1;
+	: temp = inters_path.get(place_idx);
+	: while ( j < len - 1 & temp.future_agents.get(j) > 0 ) do {
+			j = j+1;
+		}
+	: for( ; j > 0; j = j - 1) {
+			//assume that every agent have the same chance to cross intersection in this place 
+			//it's not exactly expected value - not counting vehicles that will be waiting with me
+			multiplier = 1 - 1/((Float) temp.future_agents.get(j) + 1);
+			temp.expect_wait_time = multiplier*(temp.expect_wait_time + 1); 
+		} 
+	: if(place_idx < inters_len - 1) then {
+			temp2 = inters_path.get(place_idx + 1);
+			temp.expect_wait_time = temp.expect_wait_time + temp2.expect_wait_time;
+		}
+	}
+	
+	
+	void computeStatistics() using PatternMatch {
+	//When there is another car on my trajectory i cannot go further
+	//This covers cases when this car is not in the center
+	: when(AgentState car (car.place != Position.C and ((my_state.place == car.place and my_state.position < car.position and my_state.position + max_dist > car.position) or
+														(my_state.dest == car.place and my_state.place != my_state.dest and 
+														((my_state.place == Position.C and max_dist - inters_len > car.position) or
+														(my_state.place != Position.C and my_state.position + max_dist - len - inters_len > car.position)))))) do {
+			max_dist = my_state.position - car.position;
+			min_dist = Math.min(min_dist, max_dist);
+		}
+	: when(IntersectionPlace p ((p.id != my_state.position or my_state.place != Position.C) and (fst_inters - p.id + 4) % 4 <= inters_len)) do {
+			p.distance = 0;
+			if(my_state.place != Position.C) p.distance = len - my_state.position;
+			p.distance = p.distance + (p.id - fst_inters + 4) % 4;
+			inters_path.add(p);
+		}
+	: when(IntersectionPlace p (p.distance != null) & 
+		AgentState car (car.agent_id != my_state.agent_id and (car.place != Position.C and (car.place.num - p.id + 4) % 4 <= (car.place.num - (car.dest.num + 1) % 4) % 4) or
+															  (car.place == Position.C and (car.position - p.id + 4) % 4 <= (car.place.num - (car.dest.num + 1) % 4) % 4))) do {
+			//Car's path goes through this intersection place
+			i = 0;
+			if(car.place != Position.C) i = len - car.position;
+			i = i + (p.id - car.place.num + 4) % 4;
+			i = (i - 1) / my_state.max_speed;
+			j = p.future_agents.get(i) + 1;
+			p.future_agents.set(i, j);
+			if(car.place == Position.C and car.position == p.id) {
+				max_dist = Math.min(max_dist, p.distance);
+				min_dist = Math.min(min_dist, max_dist);
+			}
+			if(i == 0) {
+				min_dist = Math.min(min_dist, p.distance); 
+				i = car.agent_id;
+				p.agents.add(i);
+			}
+		}
+	}
+	
 }
