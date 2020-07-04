@@ -1,5 +1,6 @@
 package simulation;
 
+import messages.*;
 import java.util.BitSet;
 import java.util.ArrayList;
 
@@ -14,7 +15,7 @@ public class Agent extends AbleDefaultAgent {
 
 	private static final long serialVersionUID = 9143011496195622412L;
 	
-	private final int agent_id;
+	private final Integer agent_id;
 	private int length;
 	private int time_start;
 	private Position from;
@@ -31,12 +32,12 @@ public class Agent extends AbleDefaultAgent {
 	//TODO this structures aren't thread-safe
 	private BitSet commited;
 	private BitSet receaved;
-	private ArrayList<Message.Offer> offers;
-	private ArrayList<Message.Accept> accepts;
+	private ArrayList<OfferMsg> offers;
+	private ArrayList<AcceptMsg> accepts;
 	private boolean finished;
 	private boolean got_offers;
 
-	public Agent(int length, int agent_id, int time_start, Position from, Position dest, int time_from, 
+	public Agent(int length, Integer agent_id, int time_start, Position from, Position dest, int time_from, 
 				 int time_dest, int haste, boolean random_haste, int max_speed, int points) throws AbleException {
 		super("Agent");
 		this.length = length;
@@ -63,16 +64,19 @@ public class Agent extends AbleDefaultAgent {
 	
 	@Override
 	public void processAbleEvent(AbleEvent evt) throws AbleException {
-		if(evt.getArgObject() instanceof Message.NextRound) {
-			Message.NextRound msg = (Message.NextRound) evt.getArgObject();
+		
+		System.out.println("Agent event: " + evt.toString());
+		
+		if(evt.getArgObject() instanceof NextRoundMsg) {
+			NextRoundMsg msg = (NextRoundMsg) evt.getArgObject();
 			AgentState mystate = msg.state.get(this.agent_id);
 			Action res;
 			commited = new BitSet(msg.state.size());
 			receaved = new BitSet(msg.state.size());
 			commited.set(this.agent_id); //not waiting for myself
 			receaved.set(this.agent_id); //not waiting for myself
-			offers = new ArrayList<Message.Offer>();
-			accepts = new ArrayList<Message.Accept>();
+			offers = new ArrayList<OfferMsg>();
+			accepts = new ArrayList<AcceptMsg>();
 			finished = false;
 			got_offers = false;
 			if(mystate.waiting_time > 0) {
@@ -83,28 +87,28 @@ public class Agent extends AbleDefaultAgent {
 			} else res = new Action(0);
 			Object send;
 			if(res.getFinalSpeed() != null) {
-				send = new Message.FinishedStep(this.agent_id, res.getFinalSpeed());
+				send = new FinishedStepMsg(this.agent_id, res.getFinalSpeed());
 				finished = true;
 			} else if(res.getSpeeds() != null)
-				send = new Message.Accept(this.agent_id, res.getOffers(), res.getSpeeds());
-			else send = new Message.Offer(this.agent_id, res.getOffers());
+				send = new AcceptMsg(this.agent_id, res.getOffers(), res.getSpeeds());
+			else send = new OfferMsg(this.agent_id, res.getOffers());
 			notifyAbleEventListeners(new AbleEvent(this, send));
-		} else if(evt.getArgObject() instanceof Message.Offer && !finished) {
-			Message.Offer msg = (Message.Offer) evt.getArgObject();
+		} else if(evt.getArgObject() instanceof OfferMsg && !finished) {
+			OfferMsg msg = (OfferMsg) evt.getArgObject();
 			offers.add(msg);
 			receaved.set(msg.agent_id);
 			if(receaved.cardinality() == receaved.length()) {
 				gotAllOffers();
 			}
-		} else if(evt.getArgObject() instanceof Message.Accept && !finished) {
-			Message.Accept msg = (Message.Accept) evt.getArgObject();
+		} else if(evt.getArgObject() instanceof AcceptMsg && !finished) {
+			AcceptMsg msg = (AcceptMsg) evt.getArgObject();
 			accepts.add(msg);
 			if(got_offers) receaved.set(msg.agent_id);
 			if(got_offers && receaved.cardinality() == receaved.length()) {
 				gotAllAccepts();
 			}
-		} else if(evt.getArgObject() instanceof Message.FinishedStep) {
-			Message.FinishedStep msg = (Message.FinishedStep) evt.getArgObject();
+		} else if(evt.getArgObject() instanceof FinishedStepMsg) {
+			FinishedStepMsg msg = (FinishedStepMsg) evt.getArgObject();
 			commited.set(msg.agent_id);
 			receaved.set(msg.agent_id);
 			if(receaved.cardinality() == receaved.length()) {
@@ -120,11 +124,11 @@ public class Agent extends AbleDefaultAgent {
 		receaved.clear();
 		receaved.or(commited);
 		got_offers = true;
-		for(Message.Accept acc: accepts) receaved.set(acc.agent_id);
+		for(AcceptMsg acc: accepts) receaved.set(acc.agent_id);
 		if(res.getSpeeds() != null)
-			notifyAbleEventListeners(new AbleEvent(this, new Message.Accept(this.agent_id, res.getOffers(), res.getSpeeds())));
+			notifyAbleEventListeners(new AbleEvent(this, new AcceptMsg(this.agent_id, res.getOffers(), res.getSpeeds())));
 		else {//it cannot be offer
-			notifyAbleEventListeners(new AbleEvent(this, new Message.FinishedStep(this.agent_id, res.getFinalSpeed())));
+			notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
 			finished = true;
 		}
 	}
@@ -132,7 +136,7 @@ public class Agent extends AbleDefaultAgent {
 	private void gotAllAccepts() throws AbleException {
 		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, null, accepts});
 		Action res = (Action) output[0];
-		notifyAbleEventListeners(new AbleEvent(this, new Message.FinishedStep(this.agent_id, res.getFinalSpeed())));
+		notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
 		finished = true;
 	}
 	
@@ -182,5 +186,9 @@ public class Agent extends AbleDefaultAgent {
 	
 	public int getPoints() {
 		return this.points;
+	}
+	
+	public void setPoints(int points) {
+		this.points = points;
 	}
 }

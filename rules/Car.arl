@@ -1,36 +1,46 @@
+//Offer values are based on haste, current money and approximate expected waiting time if let go 
 //Bidding rules:
 //Every agent either passes and let everyone go, or sends it's offer
 //After getting decisions from all other agents, agent processes them and decides what can he accept
-//Agent may accept lower offer than his, but cannot refuse higher offer (it guarantees consensus in one step -- there is always highest offer)
-//If agent accepts some speed, it accepts all higher speeds (logical and needed for easy consensus)
-//If two agents accept each other, then: 1. if some let lower offer go first, then it stays 2. wins bigger difference in offers 3. wins earlier offer 
+//Agent may accept lower offer than his, but cannot refuse higher offer
+//If agent accepts some speed, it accepts all higher speeds
+//If two agents accept each other, then: 1. if some let lower offer go first, then it stays 2. wins bigger difference in offers 3. wins earlier offer
+//If there are two equal offers wins agent with bigger haste, if they have equal haste wins agent with smaller agent_id 
 ruleset Car {
 	import java.lang.Math;
 	import java.util.ArrayList;
 	import java.util.Collections;
+	import java.util.List;
 	import simulation.Agent;
 	import simulation.Simulation;
 	import simulation.AgentState;
 	import simulation.Position;
 	import simulation.IntersectionPlace;
+	import simulation.Action;
+	import messages.OfferMsg;
+	import messages.AcceptMsg;
 	import com.ibm.able.rules.AbleOclCollection;
 	
   	variables {
 		Agent agent;
+		ArrayList in_state;
 		ArrayList cur_state;
+		List offers;
+		List accepts;
 		AgentState my_state;
+		Action res;
 		Integer speed;
 		Integer n_messages = 0;
-		Integer[] speed_value;
 		Integer turn;
 		Integer i;
 		Integer j;
-//		Integer k;
+		Integer k;
 		Integer len;
 		Integer max_dist;
 		Integer min_dist;
 
 		AgentState car;
+		AgentState car2;
 		Expression Collides = car.place != car.dest and (car.place != my_state.place or car.position > my_state.position) and 
 			car.dest == agent.dest or 
 			(turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
@@ -50,19 +60,152 @@ ruleset Car {
 		
 		Float max_spend;
 		Float sum_wait;
-		ArrayList offers;
+		ArrayList offer;
+		
+		ArrayList acc_offers;
+		ArrayList speeds;
+		Integer to_pay;
+		
 	}
 
-	inputs{agent, cur_state};
+	inputs{agent, in_state, offers, accepts};
 
-	outputs{speed, n_messages};
+	outputs{res};
 
-	void preProcess() {
-	: speed_value = new Integer[my_state.max_speed];
+	void process() using DecisionTree {
+	: print(agent.getAgentId());
+	: println(" processing");
+	: if(offers == null and accepts == null) then {
+			invokeRuleBlock("processState");
+		}
+	: if(offers != null) then {
+			invokeRuleBlock("processOffers");
+		}
+	: if(accepts != null) then {
+			invokeRuleBlock("processAccepts");
+		}
+		
+	: print(res);
+	: println(" finished");
+	}
+	
+	void processAccepts() using Script {
+	: wm.assertAll(accepts);
+	: invokeRuleBlock("removeNotAccepted");
+	: invokeRuleBlock("computeBestOffer");
+	: speed = min_dist;
+	: to_pay = 0;
+	: i = 0;
+	: for(j = 0 ; j < inters_path.size(); j = j + 1) {
+			temp = inters_path.get(i);
+			if(temp.distance >= min_dist) {
+				//TODO it doesnt work (i may not win because lost before)
+				if(i == 0 and temp.best_offer_id == my_state.agent_id) {
+					speed = speed + 1;
+					to_pay = temp.best_offer;
+				} else {
+					i = 1;
+					k = agent.getPoints() + temp.best_offer / 2;
+					agent.setPoints(k);
+				}
+			}
+		}
+	: k = agent.getPoints() - to_pay;
+	: agent.setPoints(k);
+	: res = new Action(speed);
+	}
+	
+	void computeBestOffer() using PatternMatch {
+	//We can assume that all agreed on every offer fufilling this conditions
+	: when(IntersectionPlace p (p.distance != null and p.distance >= min_dist and p.distance < max_dist) &
+		OfferMsg m (p.agents.contains(m.agent_id)) ) do {
+			car = cur_state.get(m.agent_id);
+			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
+			else i = (p.id - car.position + 4) % 4;
+			//Agents can let someone go even if he had lower offer
+			//Only offers allowed by everyone are: highest offer and "let go" offers
+			//Lowest offer is offer that everyone else "let go" so it wins
+			if(p.best_offer > m.offers.get(i) ) {
+				p.best_offer = m.offers.get(i);
+				p.best_offer_id = m.agent_id;
+				p.best_offer_speed = i;
+			} else if(p.best_offer == m.offers.get(i)) {
+				car2 = cur_state.get(p.best_offer_id);
+				if(car.haste > car2.haste or (car.haste == car2.haste and m.agent_id < p.best_offer_id)) {
+					p.best_offer = m.offers.get(i);
+					p.best_offer_id = m.agent_id;
+					p.best_offer_speed = i;
+				}
+			}
+		}
 	}
 
-	//TODO move this to Forward or something, to not count graph when not needed
-	void process() using Script {
+	void removeNotAccepted() using PatternMatch {
+	//Check my offers
+	: when(IntersectionPlace p (p.distance != null and p.distance >= min_dist and p.distance < max_dist) &
+		AcceptMsg am (p.agents.contains(am.agent_id))) do {
+			j = am.offers.indexOf(my_state.agent_id);
+			if(j < 0 or am.speeds.get(j) > p.distance) {
+				//my offer was not accepted (atm on best offer is my offer) 
+				p.best_offer = null;
+				p.best_offer_id = null;
+				p.best_offer_speed = null;
+			}
+		}
+	//Check if I accepted
+	:  when(IntersectionPlace p (p.distance != null and p.distance >= min_dist and p.distance < max_dist) &
+		OfferMsg om (p.agents.contains(om.agent_id))) do {
+			car = cur_state.get(om.agent_id);
+			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
+			else i = (p.id - car.position + 4) % 4;
+			j = acc_offers.indexOf(om.agent_id);
+			if(j < 0 or speeds.get(j) > i) {
+				//he is not allowed to go there, so remove him from possible collision list 
+				p.agents.remove(om.agent_id);
+			}
+		}
+	//Check other's offers
+	: when(IntersectionPlace p (p.distance != null and p.distance >= min_dist and p.distance < max_dist) &
+		OfferMsg om (p.agents.contains(om.agent_id)) &
+		AcceptMsg am (am.agent_id != om.agent_id and p.agents.contains(am.agent_id))) do {
+			car = cur_state.get(om.agent_id);
+			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
+			else i = (p.id - car.position + 4) % 4;
+			j = am.offers.indexOf(om.agent_id);
+			if(j < 0 or am.speeds.get(j) > i) {
+				//he is not allowed to go there, so remove him from possible collision list 
+				p.agents.remove(om.agent_id);
+			}
+		}
+	}
+
+	void processOffers() using Script {
+	: wm.assertAll(offers);
+	: invokeRuleBlock("getAccOffers");
+	: res = new Action(acc_offers, speeds); 
+	}
+	
+	void getAccOffers() using PatternMatch {
+	: when(IntersectionPlace p (p.distance != null and p.distance >= min_dist and p.distance < max_dist) &
+		OfferMsg m (p.agents.contains(m.agent_id)) ) do {
+			car = cur_state.get(m.agent_id);
+			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
+			else i = (p.id - car.position + 4) % 4;
+			if(p.best_offer < m.offers.get(i) or (p.best_offer == m.offers.get(i) and 
+												 (car.haste > agent.getHaste() or (car.haste == agent.getHaste() and m.agent_id < p.best_offer_id)))) {
+				j = acc_offers.indexOf(m.agent_id);
+				if(j >= 0) {
+					speeds.set(j, Math.min(speeds.get(j), i));
+				} else {
+					acc_offers.add(m.agent_id);
+					speeds.add(i);
+				}
+			}
+		} 
+	}
+
+	void processState() using Script {
+	: cur_state = in_state;
 	: my_state = cur_state.get(agent.getAgentId());
 	: len = agent.getLength();
 	: state_col = new AbleOclCollection(cur_state);
@@ -74,59 +217,71 @@ ruleset Car {
 			intersection.add(new IntersectionPlace(i, len));
 		}
 	:wm.assertAll(intersection);
-	}
-
-//	void postProcess() {
-//	}
-	
-	//For each possible speed estimates how long it will take to escape intersection
-	//TODO add more factors (niceness, pragmaticality, occasion to earn tokens)
-	void computeSpeed() using Forward {
 	: if(agent.getDest() == my_state.dest) then
 		turn = (agent.getDest().num - agent.getFrom().num + 4) % 4;
 	: if(agent.getDest() != my_state.dest) then
 		turn = (agent.getFrom().num - agent.getDest().num + 4) % 4;
-	//Set first and last positions on intersection center
+	//First and last positions on intersection center
 	: if(my_state.place != Position.C) then
 		fst_inters = my_state.place.num;
 	: if(my_state.place == Position.C) then
 		fst_inters = my_state.position;
 	: lst_inters = (my_state.dest.num + 1) % 4;
+	//length of my path on the center of intersection (car moves in opposite direction than numbers grow)
 	: inters_len = (fst_inters - lst_inters + 4) % 4;
-	: if(my_state.dest == my_state.place) then
+	:invokeRuleBlock("computeStatistics");
+	:invokeRuleBlock("computeAction");
+	}
+
+	void computeAction() using Policy {
+	[1] : preconditions (my_state.dest == my_state.place) decisions {			
 			//If I'm after intersection, then greedly take max possible speed
-			speed = max_dist;
-	: if(my_state.dest != my_state.place and my_state.place != Position.C and my_state.position + max_dist < len) then {
+			speed = max_dist - 1;
+			res = new Action(speed);
+		}
+	[1] : preconditions (my_state.place != Position.C and my_state.position + max_dist < len) decisions {
 			//If I cannot arrive intersection, act greedly (TODO proposing car in front of me to move)
-			speed = max_dist;
+			speed = max_dist - 1;
+			res = new Action(speed);
 		}
-	: if(min_dist == max_dist) then {
-			speed = max_dist;
+	[1] : preconditions (min_dist == max_dist) decisions {
+			//Have only one option
+			speed = max_dist - 1;
+			res = new Action(speed);
 		}
-//	: if(my_state.dest != my_state.place and (my_state.place == Position.C or my_state.position + max_dist >= len)) then {
+	[0] : preconditions (min_dist < max_dist) decisions {
+			invokeRuleBlock("valuePlaces");
+			invokeRuleBlock("computeOffer");
+			res = new Action(offer);
+		}
 	}
 	
 	
 	//Only option for getting here is possibility of crossing intersection this moment
 	//and having possible collision after min_dist steps
 	void computeOffer() using Script {
-	//Simple rule for now
 	: max_spend = ((Float) agent.getHaste()) / 5 * agent.getPoints();
-	: i = (fst_inters - min_dist + 4) % 4;
 	: if(my_state.place != Position.C)
 		i = (fst_inters - (min_dist - (len - my_state.position)) + 4) % 4;
+	else 
+		i = (fst_inters - min_dist + 4) % 4; 
 	: temp = inters_path.get(i);
 	: sum_wait = temp.expect_tot_time;
-	: for( j = 0; j < i; j = j + 1) {
-			offers.add(0);
+	: for( j = 0; j < min_dist; j = j + 1) {
+			offer.add(0);
 		}
-	: for( ; i < inters_path.size(); i = i + 1) {
+	: for(j = min_dist ; j < max_dist and i < inters_path.size(); j = j + 1, i = i + 1) {
 			temp = inters_path.get(i);
 			tmp = temp.expect_tot_time / sum_wait * max_spend;
-			j = Math.round(tmp);
-			offers.add(j);
+			k = Math.round(tmp);
+			offer.add(k);
+			temp.best_offer = k;
+			temp.best_offer_id = my_state.agent_id;
+			temp.best_offer_speed = j;
+			
+			if(temp.distance != j) traceFormat("BUG: temp.distance = %d, j = %d", new Object[] {temp.distance, j});  
 		}
-	} 
+	}
 
 	void valuePlaces() using Script {
 	: Collections.sort(inters_path); //sort ascending by distance
@@ -166,25 +321,24 @@ ruleset Car {
 	//When there is another car on my trajectory i cannot go further
 	//This covers cases when this car is not in the center
 	: when(AgentState car (car.place != Position.C and ((my_state.place == car.place and my_state.position < car.position and my_state.position + max_dist > car.position) or
-														(my_state.dest == car.place and my_state.place != my_state.dest and 
+														(my_state.dest == car.place and my_state.place != my_state.dest and
 														((my_state.place == Position.C and max_dist - inters_len > car.position) or
 														(my_state.place != Position.C and my_state.position + max_dist - len - inters_len > car.position)))))) do {
 			max_dist = my_state.position - car.position;
 			min_dist = Math.min(min_dist, max_dist);
 		}
+	//find center positions on agent's path
 	: when(IntersectionPlace p ((p.id != my_state.position or my_state.place != Position.C) and (fst_inters - p.id + 4) % 4 <= inters_len)) do {
-			p.distance = 0;
-			if(my_state.place != Position.C) p.distance = len - my_state.position;
-			p.distance = p.distance + (p.id - fst_inters + 4) % 4;
+			if(my_state.place != Position.C) p.distance = len - my_state.position + (p.id - fst_inters + 4) % 4;
+			else p.distance = (p.id - fst_inters + 4) % 4;
 			inters_path.add(p);
 		}
+	//for every such position compute how on many agent trajectories it lies (and some addidtional statistics) 
 	: when(IntersectionPlace p (p.distance != null) & 
 		AgentState car (car.agent_id != my_state.agent_id and (car.place != Position.C and (car.place.num - p.id + 4) % 4 <= (car.place.num - (car.dest.num + 1) % 4) % 4) or
 															  (car.place == Position.C and (car.position - p.id + 4) % 4 <= (car.place.num - (car.dest.num + 1) % 4) % 4))) do {
-			//Car's path goes through this intersection place
-			i = 0;
-			if(car.place != Position.C) i = len - car.position;
-			i = i + (p.id - car.place.num + 4) % 4;
+			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
+			else i = (p.id - car.position + 4) % 4;
 			i = (i - 1) / my_state.max_speed;
 			j = p.future_agents.get(i) + 1;
 			p.future_agents.set(i, j);

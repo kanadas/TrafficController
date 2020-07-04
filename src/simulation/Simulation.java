@@ -1,5 +1,6 @@
 package simulation;
 
+import messages.*;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
@@ -14,6 +15,8 @@ import com.ibm.able.AbleException;
 
 public class Simulation extends AbleDefaultAgent {
 			
+	private static final long serialVersionUID = -7429691757214576852L;
+	
 	private static Random rand = new Random();
 	private int length;
 	private int steps;
@@ -43,6 +46,8 @@ public class Simulation extends AbleDefaultAgent {
 		this.latch = latch;
 		this.curr_state = new ArrayList<AgentState>();
 		this.velocity = new ArrayList<Integer>();
+		this.curr_msgs = new ArrayList<Integer>();
+		this.curr_time = new ArrayList<Integer>();
 		this.finished = new BitSet(agents.size());
 		this.sum_intersection_time = 0F;
 		this.num_intersection_cross = 0;
@@ -50,7 +55,7 @@ public class Simulation extends AbleDefaultAgent {
 		this.min_messages = null;
 		this.sum_messages = 0F;
 		for(Agent agent: agents) {
-			curr_state.add(new AgentState(agent.getAgentId(), 0, agent.getFrom(), agent.getDest(), agent.getTimeStart(), agent.getMaxSpeed()));
+			curr_state.add(new AgentState(agent.getAgentId(), 0, agent.getFrom(), agent.getDest(), agent.getTimeStart(), agent.getMaxSpeed(), agent.getHaste()));
 			velocity.add(0);
 			curr_msgs.add(0);
 			curr_time.add(0);
@@ -63,10 +68,13 @@ public class Simulation extends AbleDefaultAgent {
 	}
 	
 	public void nextRound() throws AbleException {
+	
+		System.out.println("NextRound");
+	
 		if(cur_step == steps) {
 			finish();
 		} else {
-			notifyAbleEventListeners(new AbleEvent(this, new Message.NextRound(Collections.unmodifiableList(this.curr_state))));
+			notifyAbleEventListeners(new AbleEvent(this, new NextRoundMsg(Collections.unmodifiableList(this.curr_state))));
 			cur_step++;
 			finished.clear();
 		}
@@ -74,19 +82,20 @@ public class Simulation extends AbleDefaultAgent {
 	
 	@Override
 	public void processAbleEvent(AbleEvent evt) throws AbleException {
-		if(evt.getArgObject() instanceof Message.FinishedStep) {
-			Message.FinishedStep msg = (Message.FinishedStep) evt.getArgObject();
+		System.out.println("Event: " + evt.toString());
+		if(evt.getArgObject() instanceof FinishedStepMsg) {
+			FinishedStepMsg msg = (FinishedStepMsg) evt.getArgObject();
 			finished.set(msg.agent_id);
 			sum_messages++;
 			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
 			if(finished.cardinality() == agents.size())
 				finishRound();
-		} else if(evt.getArgObject() instanceof Message.Accept) {
-			Message.Accept msg = (Message.Accept) evt.getArgObject();
+		} else if(evt.getArgObject() instanceof AcceptMsg) {
+			AcceptMsg msg = (AcceptMsg) evt.getArgObject();
 			sum_messages++;
 			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
-		} else if(evt.getArgObject() instanceof Message.Offer) {
-			Message.Offer msg = (Message.Offer) evt.getArgObject();
+		} else if(evt.getArgObject() instanceof OfferMsg) {
+			OfferMsg msg = (OfferMsg) evt.getArgObject();
 			sum_messages++;
 			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
 		}
@@ -126,16 +135,17 @@ public class Simulation extends AbleDefaultAgent {
 			Agent agent1 = agents.get(i);
 			int velocity1 = velocity.get(i);
 			BitSet center_pos1 = getCenterPositions(agent1, state1, velocity1);
+			int center_len1 = center_pos1.cardinality();
 			for(int j = 0; j < agents.size(); ++j) {
 				if(i == j) continue;
 				AgentState state2 = prev_state.get(j);
 				Agent agent2 = agents.get(j);
 				int velocity2 = velocity.get(j);
 				BitSet center_pos2 = getCenterPositions(agent2, state2, velocity2);
-				//Take over or collision in the center
-				if((state1.place != Position.C && state1.place == state2.place && state1.position <= state2.position && 
-						state1.position + velocity1 >= state2.position + velocity2) || (
-								center_pos1.intersects(center_pos2))){
+				//collision outside center or in the center or after crossing center
+				if((state1.place != Position.C && state1.place == state2.place && state1.position <= state2.position && state1.position + velocity1 >= state2.position) ||
+					center_pos1.intersects(center_pos2) ||
+					(state1.place != Position.C && state1.place != state2.place && state2.place == state1.dest && state1.position + velocity1 - length - center_len1 >= state2.position)) {
 					detectedCollision();
 					collisions.add(i);
 					collisions.add(j);
@@ -235,7 +245,7 @@ public class Simulation extends AbleDefaultAgent {
 					}
 				}
 			}
-			curr_state.add(new AgentState(i, position, place, dest, waiting_time, state.max_speed));
+			curr_state.add(new AgentState(i, position, place, dest, waiting_time, state.max_speed, agent.getHaste()));
 		}
 		nextRound();
 	}

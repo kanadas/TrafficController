@@ -9,6 +9,9 @@ public class IntersectionPlace implements Comparable<IntersectionPlace> {
 	public ArrayList<Integer> future_agents;
 	public float expect_wait_time;
 	public float expect_tot_time;
+	public Integer best_offer = null;
+	public Integer best_offer_id = null;
+	public Integer best_offer_speed = null;
 	
 	public IntersectionPlace(int id, int len) {
 		this.id = id;
