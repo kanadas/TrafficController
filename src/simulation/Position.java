@@ -19,4 +19,15 @@ public enum Position {
 		default: throw new IllegalArgumentException();
 		}
 	}
+	
+	public String toString() {
+		switch(num) {
+		case 0: return "N"; 
+		case 1: return "E"; 
+		case 2: return "S"; 
+		case 3: return "W"; 
+		case -1: return "C";
+		default: return "?";
+		}
+	}
 }

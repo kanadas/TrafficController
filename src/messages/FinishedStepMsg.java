@@ -9,4 +9,9 @@ public class FinishedStepMsg {
 		this.agent_id = agent_id;
 		this.speed = speed;
 	}
+
+	@Override
+	public String toString() {
+		return "FinishedStepMsg [agent_id=" + agent_id + ", speed=" + speed + "]";
+	}
 }

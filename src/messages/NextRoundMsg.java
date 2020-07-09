@@ -10,4 +10,9 @@ public class NextRoundMsg {
 	public NextRoundMsg(List<AgentState> state) {
 		this.state = state;
 	}
+
+	@Override
+	public String toString() {
+		return "NextRoundMsg [state=" + state + "]";
+	}
 }

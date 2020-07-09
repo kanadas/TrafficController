@@ -19,5 +19,13 @@ public final class AgentState {
 		this.waiting_time = waiting_time;
 		this.max_speed = max_speed;
 		this.haste = haste;
-	} 
+	}
+
+	@Override
+	public String toString() {
+		return "AgentState [agent_id=" + agent_id + ", position=" + position + ", place=" + place + ", dest=" + dest
+				+ "]";
+	}
+	
+	
 }

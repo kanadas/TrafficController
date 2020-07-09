@@ -4,9 +4,10 @@
 //After getting decisions from all other agents, agent processes them and decides what can he accept
 //Agent may accept lower offer than his, but cannot refuse higher offer
 //If agent accepts some speed, it accepts all higher speeds
-//If two agents accept each other, then: 1. if some let lower offer go first, then it stays 2. wins bigger difference in offers 3. wins earlier offer
-//If there are two equal offers wins agent with bigger haste, if they have equal haste wins agent with smaller agent_id 
+//TODO If two agents accept each other, then: 1. if some let lower offer go first, then it stays 2. wins bigger difference in offers 3. wins earlier offer
+//If there are two equal offers wins agent with bigger haste, if they have equal haste wins agent TODO with smaller agent_id 
 ruleset Car {
+	import java.lang.String;
 	import java.lang.Math;
 	import java.util.ArrayList;
 	import java.util.Collections;
@@ -19,12 +20,12 @@ ruleset Car {
 	import simulation.Action;
 	import messages.OfferMsg;
 	import messages.AcceptMsg;
-	import com.ibm.able.rules.AbleOclCollection;
+	import com.ibm.able.rules.AbleOclSequence;
 	
   	variables {
 		Agent agent;
-		ArrayList in_state;
-		ArrayList cur_state;
+		List in_state;
+		List cur_state;
 		List offers;
 		List accepts;
 		AgentState my_state;
@@ -46,13 +47,13 @@ ruleset Car {
 			(turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
 			(turn == 1 and !(car.place == (my_state.place.num + 1) % 4 and car.dest == my_state.place));
 		Selector colliding_cars = new Selector(this.getVariable("car"), Collides, true);
-		AbleOclCollection state_col;
-		AbleOclCollection colliding;
-		ArrayList intersection = new ArrayList;
+		AbleOclSequence state_col;
+		AbleOclSequence colliding;
+		List intersection = new ArrayList();
 		Integer fst_inters;
 		Integer lst_inters;
 		Integer inters_len;
-		ArrayList inters_path = new ArrayList;
+		List inters_path = new ArrayList();
 		IntersectionPlace temp;
 		IntersectionPlace temp2;
 		Float multiplier;
@@ -60,12 +61,13 @@ ruleset Car {
 		
 		Float max_spend;
 		Float sum_wait;
-		ArrayList offer;
+		List offer;
 		
-		ArrayList acc_offers;
-		ArrayList speeds;
+		List acc_offers;
+		List speeds;
 		Integer to_pay;
-		
+
+		String dbg_msg;		
 	}
 
 	inputs{agent, in_state, offers, accepts};
@@ -73,8 +75,8 @@ ruleset Car {
 	outputs{res};
 
 	void process() using DecisionTree {
-	: print(agent.getAgentId());
-	: println(" processing");
+	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] processing");
+	
 	: if(offers == null and accepts == null) then {
 			invokeRuleBlock("processState");
 		}
@@ -83,13 +85,12 @@ ruleset Car {
 		}
 	: if(accepts != null) then {
 			invokeRuleBlock("processAccepts");
-		}
-		
-	: print(res);
-	: println(" finished");
+		}		
 	}
 	
 	void processAccepts() using Script {
+	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] processing Accepts");
+	
 	: wm.assertAll(accepts);
 	: invokeRuleBlock("removeNotAccepted");
 	: invokeRuleBlock("computeBestOffer");
@@ -205,10 +206,12 @@ ruleset Car {
 	}
 
 	void processState() using Script {
-	: cur_state = in_state;
+	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] processing State");
+	
+	: cur_state = in_state;	
 	: my_state = cur_state.get(agent.getAgentId());
 	: len = agent.getLength();
-	: state_col = new AbleOclCollection(cur_state);
+	: state_col = new AbleOclSequence(cur_state);
 	: colliding = state_col.collect(colliding_cars);
 	: wm.assertAll(colliding.asSequence());
 	: max_dist = my_state.max_speed;
@@ -234,20 +237,28 @@ ruleset Car {
 	}
 
 	void computeAction() using Policy {
+	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] computing Action");
+	
 	[1] : preconditions (my_state.dest == my_state.place) decisions {			
 			//If I'm after intersection, then greedly take max possible speed
 			speed = max_dist - 1;
 			res = new Action(speed);
+			
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] greedy speed: " + String.valueOf(speed));
 		}
 	[1] : preconditions (my_state.place != Position.C and my_state.position + max_dist < len) decisions {
 			//If I cannot arrive intersection, act greedly (TODO proposing car in front of me to move)
 			speed = max_dist - 1;
 			res = new Action(speed);
+			
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] greedy speed: " + String.valueOf(speed));
 		}
 	[1] : preconditions (min_dist == max_dist) decisions {
 			//Have only one option
 			speed = max_dist - 1;
 			res = new Action(speed);
+			
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] greedy speed: " + String.valueOf(speed));
 		}
 	[0] : preconditions (min_dist < max_dist) decisions {
 			invokeRuleBlock("valuePlaces");
@@ -260,6 +271,8 @@ ruleset Car {
 	//Only option for getting here is possibility of crossing intersection this moment
 	//and having possible collision after min_dist steps
 	void computeOffer() using Script {
+	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] computing Offer");
+	
 	: max_spend = ((Float) agent.getHaste()) / 5 * agent.getPoints();
 	: if(my_state.place != Position.C)
 		i = (fst_inters - (min_dist - (len - my_state.position)) + 4) % 4;
@@ -279,16 +292,18 @@ ruleset Car {
 			temp.best_offer_id = my_state.agent_id;
 			temp.best_offer_speed = j;
 			
-			if(temp.distance != j) traceFormat("BUG: temp.distance = %d, j = %d", new Object[] {temp.distance, j});  
+			if(temp.distance != j) println("BUG: temp.distance = " + String.valueOf(temp.distance) + ", j = " + String.valueOf(j));
+			
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] offer " + String.valueOf(k) + " for speed " + String.valueOf(j));
 		}
 	}
 
 	void valuePlaces() using Script {
 	: Collections.sort(inters_path); //sort ascending by distance
 	
-	: if(inters_len != inters_path.size()) traceFormat("BUG: inters_len = %d inters_path.size = %d", new Object[] {inters_len, inters_path.size()});
+	: if(inters_len != inters_path.size()) println("BUG: inters_len = " + String.valueOf(inters_len) + " inters_path.size = " + String.valueOf(inters_path.size()));
 	: temp = inters_path.get(0);
-	: if(inters_path.size() > 0 and (fst_inters - 1) % 4 != temp.id)  traceFormat("BUG: fst_inters = %d inters_path.first = %d", new Object[] {fst_inters, temp});
+	: if(inters_path.size() > 0 and (fst_inters - 1) % 4 != temp.id)  println("BUG: fst_inters = " + String.valueOf(fst_inters) + " inters_path.first = " + String.valueOf(temp));
 	
 	: for(i = inters_path.size() - 1 ; i >= 0 ; i = i - 1) {
 			temp = inters_path.get(i);
@@ -318,6 +333,7 @@ ruleset Car {
 	
 	
 	void computeStatistics() using PatternMatch {
+	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] computing Statistics");
 	//When there is another car on my trajectory i cannot go further
 	//This covers cases when this car is not in the center
 	: when(AgentState car (car.place != Position.C and ((my_state.place == car.place and my_state.position < car.position and my_state.position + max_dist > car.position) or

@@ -16,7 +16,10 @@ public class IntersectionPlace implements Comparable<IntersectionPlace> {
 	public IntersectionPlace(int id, int len) {
 		this.id = id;
 		this.agents = new ArrayList<Integer>();
-		for(int i = 0; i < len; ++i) future_agents.add(0);
+		this.future_agents = new ArrayList<Integer>();
+		for(int i = 0; i < len; ++i) {
+			future_agents.add(0);
+		}
 		this.distance = null;
 	}
 

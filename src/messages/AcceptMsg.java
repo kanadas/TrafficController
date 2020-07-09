@@ -13,4 +13,9 @@ public class AcceptMsg {
 		this.offers = offers;
 		this.speeds = speeds;
 	}
+
+	@Override
+	public String toString() {
+		return "AcceptMsg [agent_id=" + agent_id + ", offers=" + offers + ", speeds=" + speeds + "]";
+	}
 }

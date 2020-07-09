@@ -82,7 +82,7 @@ public class Simulation extends AbleDefaultAgent {
 	
 	@Override
 	public void processAbleEvent(AbleEvent evt) throws AbleException {
-		System.out.println("Event: " + evt.toString());
+		System.out.println("Event: " + evt.getArgObject().toString());
 		if(evt.getArgObject() instanceof FinishedStepMsg) {
 			FinishedStepMsg msg = (FinishedStepMsg) evt.getArgObject();
 			finished.set(msg.agent_id);
@@ -119,6 +119,9 @@ public class Simulation extends AbleDefaultAgent {
 	//			   l 0
 	//			   S
 	protected void finishRound() throws AbleException {
+		
+		System.out.printf("Finished Round %d\n", cur_step);
+		
 		//Position in the center [starting position][distance]
 		int turn_tb[][] = new int[4][3]; 
 		for(int i = 0; i < 4; ++i) {
@@ -146,12 +149,12 @@ public class Simulation extends AbleDefaultAgent {
 				if((state1.place != Position.C && state1.place == state2.place && state1.position <= state2.position && state1.position + velocity1 >= state2.position) ||
 					center_pos1.intersects(center_pos2) ||
 					(state1.place != Position.C && state1.place != state2.place && state2.place == state1.dest && state1.position + velocity1 - length - center_len1 >= state2.position)) {
-					detectedCollision();
+					detectedCollision(i, j, center_pos1, center_pos2);
 					collisions.add(i);
 					collisions.add(j);
 				}
 			}
-		}
+	}
 		boolean starting_free[] = {true, true, true, true};
 		for(int i = 0; i < agents.size(); ++i) {
 			AgentState state = prev_state.get(i);
@@ -270,9 +273,22 @@ public class Simulation extends AbleDefaultAgent {
 		return res;
 	}
 	
-	protected void detectedCollision() {
-		System.err.println("Kolizja!!!");
-		//TODO better message
+	protected void detectedCollision(int i, int j, BitSet center_pos1, BitSet center_pos2) {
+		AgentState state1 = curr_state.get(i);
+		AgentState state2 = curr_state.get(j);
+		int velocity1 = velocity.get(i);
+		int velocity2 = velocity.get(j);
+		int center_len1 = center_pos1.cardinality();
+		System.err.printf("Kolizja: \nAgent %d rusza z %s pozycja %d, w kierunku %s z prędkością %d\nAgent %d rusza z %s pozycja %d, w kierunku %s z prędkością %d\n", 
+				i, state1.place.toString(), state1.position, state1.dest.toString(), velocity1, j, state2.place.toString(), state2.position, state2.dest.toString(), velocity2);
+		if((state1.place != Position.C && state1.place == state2.place && state1.position <= state2.position && state1.position + velocity1 >= state2.position)) {
+			System.err.printf("Trajektorie krzyżują się w %s, pozycja %d", state1.place, state2.position);
+		} else if(center_pos1.intersects(center_pos2)) {
+			center_pos1.and(center_pos2);
+			System.err.printf("Trajektorie krzyżują się na środku, pozycja %d", center_pos1.nextSetBit(0));
+		} else if((state1.place != Position.C && state1.place != state2.place && state2.place == state1.dest && state1.position + velocity1 - length - center_len1 >= state2.position)) {
+			System.err.printf("Trajektorie krzyżują się w %s, pozycja %d", state2.place, state2.position);
+		}
 	}
 	
 	protected void finish() {

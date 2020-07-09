@@ -1,6 +1,6 @@
 package simulation;
 
-import messages.*;
+import messages.*;	
 import java.util.BitSet;
 import java.util.ArrayList;
 
@@ -63,10 +63,7 @@ public class Agent extends AbleDefaultAgent {
 	}	
 	
 	@Override
-	public void processAbleEvent(AbleEvent evt) throws AbleException {
-		
-		System.out.println("Agent event: " + evt.toString());
-		
+	public void processAbleEvent(AbleEvent evt) throws AbleException {		
 		if(evt.getArgObject() instanceof NextRoundMsg) {
 			NextRoundMsg msg = (NextRoundMsg) evt.getArgObject();
 			AgentState mystate = msg.state.get(this.agent_id);
@@ -116,6 +113,8 @@ public class Agent extends AbleDefaultAgent {
 				else gotAllOffers();
 			}
 		}
+		
+		System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
 	}
 	
 	private void gotAllOffers() throws AbleException {
@@ -140,7 +139,7 @@ public class Agent extends AbleDefaultAgent {
 		finished = true;
 	}
 	
-	public int getAgentId() {
+	public Integer getAgentId() {
 		return this.agent_id;
 	}
 	

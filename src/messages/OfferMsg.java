@@ -10,4 +10,9 @@ public class OfferMsg {
 		this.agent_id = agent_id;
 		this.offers = offers;
 	}
+
+	@Override
+	public String toString() {
+		return "OfferMsg [agent_id=" + agent_id + ", offers=" + offers + "]";
+	}
 }
