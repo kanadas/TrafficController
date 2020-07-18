@@ -70,15 +70,16 @@ public class Agent extends AbleDefaultAgent {
 			Action res;
 			commited = new BitSet(msg.state.size());
 			receaved = new BitSet(msg.state.size());
-			commited.set(this.agent_id); //not waiting for myself
-			receaved.set(this.agent_id); //not waiting for myself
 			offers = new ArrayList<OfferMsg>();
 			accepts = new ArrayList<AcceptMsg>();
 			finished = false;
 			got_offers = false;
-			if(mystate.waiting_time > 0) {
+			if(mystate.waiting_time == 0) {
 				ruleSet.parseFromARL(rules);
 				ruleSet.init();
+				
+				System.out.printf("[Agent %d] gonna process state\n", agent_id);
+				
 				Object[] output = (Object[]) ruleSet.process(new Object[] {this, msg.state, null, null});
 				res = (Action) output[0];
 			} else res = new Action(0);
@@ -89,7 +90,11 @@ public class Agent extends AbleDefaultAgent {
 			} else if(res.getSpeeds() != null)
 				send = new AcceptMsg(this.agent_id, res.getOffers(), res.getSpeeds());
 			else send = new OfferMsg(this.agent_id, res.getOffers());
+			receaved.set(this.agent_id);
 			notifyAbleEventListeners(new AbleEvent(this, send));
+			
+			System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
+
 		} else if(evt.getArgObject() instanceof OfferMsg && !finished) {
 			OfferMsg msg = (OfferMsg) evt.getArgObject();
 			offers.add(msg);
@@ -104,7 +109,7 @@ public class Agent extends AbleDefaultAgent {
 			if(got_offers && receaved.cardinality() == receaved.length()) {
 				gotAllAccepts();
 			}
-		} else if(evt.getArgObject() instanceof FinishedStepMsg) {
+		} else if(evt.getArgObject() instanceof FinishedStepMsg && !finished) {
 			FinishedStepMsg msg = (FinishedStepMsg) evt.getArgObject();
 			commited.set(msg.agent_id);
 			receaved.set(msg.agent_id);
@@ -112,31 +117,40 @@ public class Agent extends AbleDefaultAgent {
 				if(got_offers) gotAllAccepts();
 				else gotAllOffers();
 			}
-		}
-		
-		System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
+			
+		}		
 	}
 	
 	private void gotAllOffers() throws AbleException {
+		System.out.printf("[Agent %d] gonna process offers\n", agent_id);
+		
 		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, offers, null});
 		Action res = (Action) output[0];
 		receaved.clear();
 		receaved.or(commited);
 		got_offers = true;
 		for(AcceptMsg acc: accepts) receaved.set(acc.agent_id);
+		receaved.set(this.agent_id);
 		if(res.getSpeeds() != null)
 			notifyAbleEventListeners(new AbleEvent(this, new AcceptMsg(this.agent_id, res.getOffers(), res.getSpeeds())));
-		else {//it cannot be offer
+		else { //it cannot be offer
 			notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
 			finished = true;
 		}
+		
+		System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
 	}
 	
 	private void gotAllAccepts() throws AbleException {
+		System.out.printf("[Agent %d] gonna process accepts\n", agent_id);
+		
 		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, null, accepts});
 		Action res = (Action) output[0];
 		notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
 		finished = true;
+		
+		System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
+
 	}
 	
 	public Integer getAgentId() {

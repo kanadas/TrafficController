@@ -68,15 +68,15 @@ public class Simulation extends AbleDefaultAgent {
 	}
 	
 	public void nextRound() throws AbleException {
-	
 		System.out.println("NextRound");
-	
+		System.out.println(curr_state);
+		
+		finished.clear();
 		if(cur_step == steps) {
 			finish();
 		} else {
 			notifyAbleEventListeners(new AbleEvent(this, new NextRoundMsg(Collections.unmodifiableList(this.curr_state))));
-			cur_step++;
-			finished.clear();
+			cur_step++;	
 		}
 	}
 	
@@ -86,18 +86,25 @@ public class Simulation extends AbleDefaultAgent {
 		if(evt.getArgObject() instanceof FinishedStepMsg) {
 			FinishedStepMsg msg = (FinishedStepMsg) evt.getArgObject();
 			finished.set(msg.agent_id);
-			sum_messages++;
-			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
+			if(curr_state.get(msg.agent_id).waiting_time == 0) {
+				sum_messages++;
+				curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
+			}
+			velocity.set(msg.agent_id, msg.speed);
 			if(finished.cardinality() == agents.size())
 				finishRound();
 		} else if(evt.getArgObject() instanceof AcceptMsg) {
 			AcceptMsg msg = (AcceptMsg) evt.getArgObject();
-			sum_messages++;
-			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
+			if(curr_state.get(msg.agent_id).waiting_time == 0) {
+				sum_messages++;
+				curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
+			}
 		} else if(evt.getArgObject() instanceof OfferMsg) {
 			OfferMsg msg = (OfferMsg) evt.getArgObject();
-			sum_messages++;
-			curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
+			if(curr_state.get(msg.agent_id).waiting_time == 0) {
+				sum_messages++;
+				curr_msgs.set(msg.agent_id, curr_msgs.get(msg.agent_id) + 1);
+			}
 		}
 	}
 	
@@ -135,6 +142,7 @@ public class Simulation extends AbleDefaultAgent {
 		//Checking for collisions
 		for(int i = 0; i < agents.size(); ++i) {
 			AgentState state1 = prev_state.get(i);
+			if(state1.waiting_time > 0) continue;
 			Agent agent1 = agents.get(i);
 			int velocity1 = velocity.get(i);
 			BitSet center_pos1 = getCenterPositions(agent1, state1, velocity1);
@@ -142,23 +150,24 @@ public class Simulation extends AbleDefaultAgent {
 			for(int j = 0; j < agents.size(); ++j) {
 				if(i == j) continue;
 				AgentState state2 = prev_state.get(j);
+				if(state2.waiting_time > 0) continue;
 				Agent agent2 = agents.get(j);
 				int velocity2 = velocity.get(j);
 				BitSet center_pos2 = getCenterPositions(agent2, state2, velocity2);
 				//collision outside center or in the center or after crossing center
 				if((state1.place != Position.C && state1.place == state2.place && state1.position <= state2.position && state1.position + velocity1 >= state2.position) ||
 					center_pos1.intersects(center_pos2) ||
-					(state1.place != Position.C && state1.place != state2.place && state2.place == state1.dest && state1.position + velocity1 - length - center_len1 >= state2.position)) {
-					detectedCollision(i, j, center_pos1, center_pos2);
+					(state1.place != Position.C && state1.place != state2.place && state2.place == state1.dest && state1.position + velocity1 - length - center_len1 >= state2.position)) {					
+					detectedCollision(i, j, center_pos1, center_pos2, prev_state);
 					collisions.add(i);
 					collisions.add(j);
 				}
 			}
-	}
+		}
 		boolean starting_free[] = {true, true, true, true};
 		for(int i = 0; i < agents.size(); ++i) {
 			AgentState state = prev_state.get(i);
-			if(state.place != Position.C && state.position == 0 && velocity.get(i) == 0) 
+			if(state.place != Position.C && state.waiting_time == 0 && state.position == 0 && velocity.get(i) == 0) 
 				starting_free[state.place.num] = false;
 		}
 		for(int i = 0; i < agents.size(); ++i) {
@@ -167,7 +176,7 @@ public class Simulation extends AbleDefaultAgent {
 			int position = state.position + velocity.get(i);
 			Position place = state.place;
 			Position dest = state.dest;
-			int waiting_time = state.waiting_time;
+			int waiting_time = state.waiting_time;			
 			sum_intersection_time++;
 			if(collisions.contains(i)) {
 				sum_intersection_time--;
@@ -211,6 +220,7 @@ public class Simulation extends AbleDefaultAgent {
 						else min_messages = Math.min(min_messages, nmsgs);
 						if(max_messages == null) max_messages = nmsgs;
 						else max_messages = Math.max(max_messages, nmsgs);
+						curr_msgs.set(i, 0);
 					} else {
 						dest = agent.getFrom();
 						waiting_time = agent.getTimeFrom();
@@ -257,12 +267,13 @@ public class Simulation extends AbleDefaultAgent {
 		BitSet res = new BitSet(4);
 		int position;
 		int len;
+		if(state.place == state.dest) return res;
 		if(state.place == Position.C) {
 			position = state.position;
 			len = velocity;
 		} else {
 			position = state.place.num;
-			len = velocity - (position - length - 1);
+			len = velocity - (length - state.position);
 			if(len >= 0) res.set(position);
 		}
 		while(len > 0 && position != (state.dest.num + 1) % 4) {
@@ -273,21 +284,25 @@ public class Simulation extends AbleDefaultAgent {
 		return res;
 	}
 	
-	protected void detectedCollision(int i, int j, BitSet center_pos1, BitSet center_pos2) {
-		AgentState state1 = curr_state.get(i);
-		AgentState state2 = curr_state.get(j);
+	protected void detectedCollision(int i, int j, BitSet center_pos1, BitSet center_pos2, ArrayList<AgentState> state) {
+		AgentState state1 = state.get(i);
+		AgentState state2 = state.get(j);
 		int velocity1 = velocity.get(i);
 		int velocity2 = velocity.get(j);
 		int center_len1 = center_pos1.cardinality();
 		System.err.printf("Kolizja: \nAgent %d rusza z %s pozycja %d, w kierunku %s z prędkością %d\nAgent %d rusza z %s pozycja %d, w kierunku %s z prędkością %d\n", 
 				i, state1.place.toString(), state1.position, state1.dest.toString(), velocity1, j, state2.place.toString(), state2.position, state2.dest.toString(), velocity2);
 		if((state1.place != Position.C && state1.place == state2.place && state1.position <= state2.position && state1.position + velocity1 >= state2.position)) {
-			System.err.printf("Trajektorie krzyżują się w %s, pozycja %d", state1.place, state2.position);
+			System.err.printf("Trajektorie krzyżują się w %s, pozycja %d\n", state1.place, state2.position);
 		} else if(center_pos1.intersects(center_pos2)) {
 			center_pos1.and(center_pos2);
-			System.err.printf("Trajektorie krzyżują się na środku, pozycja %d", center_pos1.nextSetBit(0));
+			System.err.printf("Trajektorie krzyżują się na środku, pozycja %d\n", center_pos1.nextSetBit(0));
+			
+			System.out.println(center_pos1);
+			System.out.println(center_pos2);
+			
 		} else if((state1.place != Position.C && state1.place != state2.place && state2.place == state1.dest && state1.position + velocity1 - length - center_len1 >= state2.position)) {
-			System.err.printf("Trajektorie krzyżują się w %s, pozycja %d", state2.place, state2.position);
+			System.err.printf("Trajektorie krzyżują się w %s, pozycja %d\n", state2.place, state2.position);
 		}
 	}
 	

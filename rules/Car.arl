@@ -40,23 +40,29 @@ ruleset Car {
 		Integer max_dist;
 		Integer min_dist;
 
-		AgentState car;
-		AgentState car2;
-		Expression Collides = car.place != car.dest and (car.place != my_state.place or car.position > my_state.position) and 
-			car.dest == agent.dest or 
-			(turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
-			(turn == 1 and !(car.place == (my_state.place.num + 1) % 4 and car.dest == my_state.place));
-		Selector colliding_cars = new Selector(this.getVariable("car"), Collides, true);
-		AbleOclSequence state_col;
+		AbleOclSequence pom_seq;
 		AbleOclSequence colliding;
 		List intersection = new ArrayList();
+		AbleOclSequence my_intersection;
 		Integer fst_inters;
 		Integer lst_inters;
 		Integer inters_len;
-		List inters_path = new ArrayList();
+		List inters_path;
 		IntersectionPlace temp;
 		IntersectionPlace temp2;
 		Float multiplier;
+		
+		AgentState car;
+		AgentState car2;
+		IntersectionPlace p;
+		Expression Collides = car.agent_id != my_state.agent_id and car.waiting_time == 0 and (
+			(car.place != Position.C and car.place == my_state.place and car.position > my_state.position) or 
+			(car.place != my_state.place and car.dest == my_state.dest) or 
+			(turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
+			(turn == 1 and !(car.place == (my_state.place.num + 1) % 4 and car.dest == my_state.place)));
+		Selector colliding_cars = new Selector(this.getVariable("car"), Collides, true);
+		Expression myIntersection = (p.id != my_state.position or my_state.place != Position.C) and (fst_inters - p.id + 4) % 4 < inters_len;
+		Selector get_my_intersection = new Selector(this.getVariable("p"), myIntersection, true);
 		Float tmp;
 		
 		Float max_spend;
@@ -67,7 +73,7 @@ ruleset Car {
 		List speeds;
 		Integer to_pay;
 
-		String dbg_msg;		
+		Boolean dbg_bool;
 	}
 
 	inputs{agent, in_state, offers, accepts};
@@ -211,15 +217,26 @@ ruleset Car {
 	: cur_state = in_state;	
 	: my_state = cur_state.get(agent.getAgentId());
 	: len = agent.getLength();
-	: state_col = new AbleOclSequence(cur_state);
-	: colliding = state_col.collect(colliding_cars);
+	: pom_seq = new AbleOclSequence(cur_state);
+	: colliding = pom_seq.select(colliding_cars);
+	
+	/*: for(i = 0; i < cur_state.size(); i = i + 1) {
+		car = cur_state.get(i);
+		dbg_bool = car.waiting_time == 0 and (
+			(car.place != Position.C and car.place == my_state.place and car.position > my_state.position) or 
+			(car.place != my_state.place and car.dest == my_state.dest) or 
+			(turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
+			(turn == 1 and !(car.place == (my_state.place.num + 1) % 4 and car.dest == my_state.place)));
+		println("[Agent " + String.valueOf(agent.getAgentId()) + "] " + car.place.toString() + " " + car.dest.toString() + " " + String.valueOf(car.position) + " " + String.valueOf(dbg_bool));
+	}*/
+	/*: for(i = 0; i < colliding.size(); i = i + 1) {
+		car = colliding.get(i);
+		println("[Agent " + String.valueOf(agent.getAgentId()) + "] " + car.agent_id);
+	}*/
+		
 	: wm.assertAll(colliding.asSequence());
-	: max_dist = my_state.max_speed;
-	: min_dist = my_state.max_speed;
-	: for(i = 0; i < 4; ++i) {
-			intersection.add(new IntersectionPlace(i, len));
-		}
-	:wm.assertAll(intersection);
+	: max_dist = my_state.max_speed + 1;
+	: min_dist = my_state.max_speed + 1;
 	: if(agent.getDest() == my_state.dest) then
 		turn = (agent.getDest().num - agent.getFrom().num + 4) % 4;
 	: if(agent.getDest() != my_state.dest) then
@@ -231,15 +248,37 @@ ruleset Car {
 		fst_inters = my_state.position;
 	: lst_inters = (my_state.dest.num + 1) % 4;
 	//length of my path on the center of intersection (car moves in opposite direction than numbers grow)
-	: inters_len = (fst_inters - lst_inters + 4) % 4;
-	:invokeRuleBlock("computeStatistics");
-	:invokeRuleBlock("computeAction");
+	: inters_len = (fst_inters - lst_inters + 4) % 4 + 1;
+	: if(my_state.place == my_state.dest) inters_len = 0;
+	: for(i = 0; i < 4; ++i) {
+			intersection.add(new IntersectionPlace(i, len));
+		}
+	//find center positions on agent's path
+	: pom_seq = new AbleOclSequence(intersection);
+	: my_intersection = pom_seq.select(get_my_intersection);
+	: for(i = 0; i < my_intersection.size(); i = i + 1) {
+			p = my_intersection.get(i);
+			if(my_state.place != Position.C) p.distance = len - my_state.position + (p.id - fst_inters + 4) % 4;
+			else p.distance = (p.id - fst_inters + 4) % 4;
+			
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] intersection on trajectory: " + String.valueOf(p.id));
+		}
+	
+	: if(my_intersection.size() != inters_len) 
+		println("BUG [Agent " + String.valueOf(agent.getAgentId()) + "] my_intersection.size() = " + String.valueOf(my_intersection.size()) + " inters_len = " + String.valueOf(inters_len));
+	
+	: wm.assertAll(my_intersection);
+	: invokeRuleBlock("computeStatistics");
+	
+	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] min_dist = " + String.valueOf(min_dist) + " max_dist = " + String.valueOf(max_dist));
+	
+	: invokeRuleBlock("computeAction");
 	}
 
 	void computeAction() using Policy {
 	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] computing Action");
 	
-	[1] : preconditions (my_state.dest == my_state.place) decisions {			
+	[1] : preconditions (my_state.dest == my_state.place) decisions {
 			//If I'm after intersection, then greedly take max possible speed
 			speed = max_dist - 1;
 			res = new Action(speed);
@@ -299,9 +338,8 @@ ruleset Car {
 	}
 
 	void valuePlaces() using Script {
-	: Collections.sort(inters_path); //sort ascending by distance
-	
-	: if(inters_len != inters_path.size()) println("BUG: inters_len = " + String.valueOf(inters_len) + " inters_path.size = " + String.valueOf(inters_path.size()));
+	: inters_path = (List) my_intersection;
+	: Collections.sort(inters_path); //sort ascending by distance	
 	: temp = inters_path.get(0);
 	: if(inters_path.size() > 0 and (fst_inters - 1) % 4 != temp.id)  println("BUG: fst_inters = " + String.valueOf(fst_inters) + " inters_path.first = " + String.valueOf(temp));
 	
@@ -334,25 +372,29 @@ ruleset Car {
 	
 	void computeStatistics() using PatternMatch {
 	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] computing Statistics");
+	
+//	: when(AgentState car (true)) do {
+//		println("[Agent " + String.valueOf(agent.getAgentId()) + "] WAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA " + String.valueOf(car.agent_id));
+//	}
+	
 	//When there is another car on my trajectory i cannot go further
 	//This covers cases when this car is not in the center
 	: when(AgentState car (car.place != Position.C and ((my_state.place == car.place and my_state.position < car.position and my_state.position + max_dist > car.position) or
 														(my_state.dest == car.place and my_state.place != my_state.dest and
 														((my_state.place == Position.C and max_dist - inters_len > car.position) or
 														(my_state.place != Position.C and my_state.position + max_dist - len - inters_len > car.position)))))) do {
-			max_dist = my_state.position - car.position;
+			max_dist = car.position - my_state.position;
 			min_dist = Math.min(min_dist, max_dist);
-		}
-	//find center positions on agent's path
-	: when(IntersectionPlace p ((p.id != my_state.position or my_state.place != Position.C) and (fst_inters - p.id + 4) % 4 <= inters_len)) do {
-			if(my_state.place != Position.C) p.distance = len - my_state.position + (p.id - fst_inters + 4) % 4;
-			else p.distance = (p.id - fst_inters + 4) % 4;
-			inters_path.add(p);
+			
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] car on trajectory: " + String.valueOf(car.agent_id));
 		}
 	//for every such position compute how on many agent trajectories it lies (and some addidtional statistics) 
-	: when(IntersectionPlace p (p.distance != null) & 
-		AgentState car (car.agent_id != my_state.agent_id and (car.place != Position.C and (car.place.num - p.id + 4) % 4 <= (car.place.num - (car.dest.num + 1) % 4) % 4) or
-															  (car.place == Position.C and (car.position - p.id + 4) % 4 <= (car.place.num - (car.dest.num + 1) % 4) % 4))) do {
+	: when(IntersectionPlace p (true) & 
+		AgentState car ((car.place != Position.C and (car.place.num - p.id + 4) % 4 <= (car.place.num - ((car.dest.num + 1) % 4) + 4) % 4) or
+						(car.place == Position.C and (car.position - p.id + 4) % 4 <= (car.place.num - ((car.dest.num + 1) % 4) + 4) % 4))) do {
+						
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] intersection " + String.valueOf(p.id) + " on path of " + String.valueOf(car.agent_id));
+			
 			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
 			else i = (p.id - car.position + 4) % 4;
 			i = (i - 1) / my_state.max_speed;
