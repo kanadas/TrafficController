@@ -1,12 +1,13 @@
 package simulation;
 
+import java.util.List;
 import java.util.ArrayList;
 
 public class IntersectionPlace implements Comparable<IntersectionPlace> {
 	public final int id;
 	public Integer distance;
-	public ArrayList<Integer> agents;
-	public ArrayList<Integer> future_agents;
+	public List<Integer> agents;
+	public List<Integer> future_agents;
 	public float expect_wait_time;
 	public float expect_tot_time;
 	public Integer best_offer = null;
@@ -27,5 +28,14 @@ public class IntersectionPlace implements Comparable<IntersectionPlace> {
 	public int compareTo(IntersectionPlace p) {
 		//Distance ascending
 		return this.distance - p.distance;
+	}
+
+	@Override
+	public String toString() {
+		return "IntersectionPlace [id=" + id + ", distance=" + distance + "]";
+	}
+	
+	public Boolean onPathOf(Integer agent_id) {
+		return agents.contains(agent_id);
 	}
 }

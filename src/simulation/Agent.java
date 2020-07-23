@@ -18,6 +18,7 @@ public class Agent extends AbleDefaultAgent {
 	private final Integer agent_id;
 	private int length;
 	private int time_start;
+	private int n_agents;
 	private Position from;
 	private Position dest;
 	private int time_from;
@@ -36,6 +37,9 @@ public class Agent extends AbleDefaultAgent {
 	private ArrayList<AcceptMsg> accepts;
 	private boolean finished;
 	private boolean got_offers;
+	
+	private int min_dist = 0;
+	private int max_dist = 0;
 
 	public Agent(int length, Integer agent_id, int time_start, Position from, Position dest, int time_from, 
 				 int time_dest, int haste, boolean random_haste, int max_speed, int points) throws AbleException {
@@ -68,8 +72,9 @@ public class Agent extends AbleDefaultAgent {
 			NextRoundMsg msg = (NextRoundMsg) evt.getArgObject();
 			AgentState mystate = msg.state.get(this.agent_id);
 			Action res;
-			commited = new BitSet(msg.state.size());
-			receaved = new BitSet(msg.state.size());
+			this.n_agents = msg.state.size(); 
+			commited = new BitSet(n_agents);
+			receaved = new BitSet(n_agents);
 			offers = new ArrayList<OfferMsg>();
 			accepts = new ArrayList<AcceptMsg>();
 			finished = false;
@@ -80,8 +85,10 @@ public class Agent extends AbleDefaultAgent {
 				
 				System.out.printf("[Agent %d] gonna process state\n", agent_id);
 				
-				Object[] output = (Object[]) ruleSet.process(new Object[] {this, msg.state, null, null});
+				Object[] output = (Object[]) ruleSet.process(new Object[] {this, msg.state, null, null, min_dist, max_dist});
 				res = (Action) output[0];
+				min_dist = (Integer) output[1];
+				max_dist = (Integer) output[2];
 			} else res = new Action(0);
 			Object send;
 			if(res.getFinalSpeed() != null) {
@@ -99,21 +106,25 @@ public class Agent extends AbleDefaultAgent {
 			OfferMsg msg = (OfferMsg) evt.getArgObject();
 			offers.add(msg);
 			receaved.set(msg.agent_id);
-			if(receaved.cardinality() == receaved.length()) {
+			
+			//System.out.printf("[Agent %d] got offers: %s card = %d size = %d\n", agent_id, receaved, receaved.cardinality(), receaved.size());
+			
+			if(receaved.cardinality() == n_agents) {
 				gotAllOffers();
 			}
 		} else if(evt.getArgObject() instanceof AcceptMsg && !finished) {
 			AcceptMsg msg = (AcceptMsg) evt.getArgObject();
 			accepts.add(msg);
 			if(got_offers) receaved.set(msg.agent_id);
-			if(got_offers && receaved.cardinality() == receaved.length()) {
+			else commited.nextSetBit(msg.agent_id);
+			if(got_offers && receaved.cardinality() == n_agents) {
 				gotAllAccepts();
 			}
 		} else if(evt.getArgObject() instanceof FinishedStepMsg && !finished) {
 			FinishedStepMsg msg = (FinishedStepMsg) evt.getArgObject();
 			commited.set(msg.agent_id);
-			receaved.set(msg.agent_id);
-			if(receaved.cardinality() == receaved.length()) {
+			receaved.set(msg.agent_id);			
+			if(receaved.cardinality() == n_agents) {
 				if(got_offers) gotAllAccepts();
 				else gotAllOffers();
 			}
@@ -122,9 +133,9 @@ public class Agent extends AbleDefaultAgent {
 	}
 	
 	private void gotAllOffers() throws AbleException {
-		System.out.printf("[Agent %d] gonna process offers\n", agent_id);
+		System.out.printf("[Agent %d] gonna process offers: %s\n", agent_id, offers.toString());
 		
-		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, offers, null});
+		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, offers, null, min_dist, max_dist});
 		Action res = (Action) output[0];
 		receaved.clear();
 		receaved.or(commited);
@@ -144,7 +155,7 @@ public class Agent extends AbleDefaultAgent {
 	private void gotAllAccepts() throws AbleException {
 		System.out.printf("[Agent %d] gonna process accepts\n", agent_id);
 		
-		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, null, accepts});
+		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, null, accepts, min_dist, max_dist});
 		Action res = (Action) output[0];
 		notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
 		finished = true;

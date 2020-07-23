@@ -156,8 +156,8 @@ public class Simulation extends AbleDefaultAgent {
 				BitSet center_pos2 = getCenterPositions(agent2, state2, velocity2);
 				//collision outside center or in the center or after crossing center
 				if((state1.place != Position.C && state1.place == state2.place && state1.position <= state2.position && state1.position + velocity1 >= state2.position) ||
-					center_pos1.intersects(center_pos2) ||
-					(state1.place != Position.C && state1.place != state2.place && state2.place == state1.dest && state1.position + velocity1 - length - center_len1 >= state2.position)) {					
+						(center_pos1.intersects(center_pos2) && i < j) ||
+						(state1.place != Position.C && state1.place != state2.place && state2.place == state1.dest && state1.position + velocity1 - length - center_len1 >= state2.position)) {					
 					detectedCollision(i, j, center_pos1, center_pos2, prev_state);
 					collisions.add(i);
 					collisions.add(j);
