@@ -38,4 +38,9 @@ public class IntersectionPlace implements Comparable<IntersectionPlace> {
 	public Boolean onPathOf(Integer agent_id) {
 		return agents.contains(agent_id);
 	}
+	
+	public Integer distanceFrom(AgentState car, int len) {
+		if(car.place != Position.C) return len - car.position + (car.place.num - this.id + 4) % 4;
+		return (car.position - this.id + 4) % 4;
+	}
 }

@@ -70,6 +70,9 @@ public class Simulation extends AbleDefaultAgent {
 	public void nextRound() throws AbleException {
 		System.out.println("NextRound");
 		System.out.println(curr_state);
+		System.out.print("Agent points: ");
+		for(Agent agent: agents) System.out.print(String.valueOf(agent.getPoints()) + " ");
+		System.out.println();
 		
 		finished.clear();
 		if(cur_step == steps) {

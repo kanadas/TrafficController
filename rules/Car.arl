@@ -27,11 +27,10 @@ ruleset Car {
 	
   	variables {
 		Agent agent;
-		List in_state;
 		List cur_state;
 		List offers;
 		List accepts;
-		AgentState my_state;
+		static AgentState my_state;
 		Action res;
 		Integer speed;
 		Integer n_messages = 0;
@@ -40,8 +39,8 @@ ruleset Car {
 		Integer j;
 		Integer k;
 		Integer len;
-		Integer max_dist;
-		Integer min_dist;
+		static Integer max_dist;
+		static Integer min_dist;
 
 		AbleOclSequence pom_seq;
 		AbleOclSequence colliding;
@@ -50,7 +49,7 @@ ruleset Car {
 		Integer fst_inters;
 		Integer lst_inters;
 		Integer inters_len;
-		List inters_path;
+		static List inters_path;
 		IntersectionPlace temp;
 		IntersectionPlace temp2;
 		Float multiplier;
@@ -72,20 +71,21 @@ ruleset Car {
 		Float sum_wait;
 		List offer;
 		
-		List acc_offers;
-		List speeds;
+		static List acc_offers;
+		static List speeds;
 		Integer to_pay;
 
 		Boolean dbg_bool;
 		List dbg_list;
 	}
 
-	inputs{agent, in_state, offers, accepts, min_dist, max_dist};
+	inputs{agent, cur_state, offers, accepts};
 
-	outputs{res, min_dist, max_dist};
+	outputs{res};
 
 	void process() using Script {
 	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] processing");
+	: len = agent.getLength();
 	
 	: if(offers == null and accepts == null) {
 			invokeRuleBlock("processState");
@@ -98,45 +98,56 @@ ruleset Car {
 		}		
 	}
 	
+	//TODO in round 84 results in speed 1 instead of 2
 	void processAccepts() using Script {
 	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] processing Accepts");
 	
 	: wm.assertAll(accepts);
 	: invokeRuleBlock("removeNotAccepted");
+	
+//	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] removed not accepted");
+	
 	: invokeRuleBlock("computeBestOffer");
-	: speed = min_dist;
+	
+//	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] computed best offers");
+	
+	: speed = min_dist - 1;
 	: to_pay = 0;
-	: i = 0;
 	: for(j = 0 ; j < inters_path.size(); j = j + 1) {
-			temp = inters_path.get(i);
+			temp = inters_path.get(j);			
 			if(temp.distance >= min_dist) {
 				//TODO it doesnt work (i may not win because lost before)
-				if(i == 0 and temp.best_offer_id == my_state.agent_id) {
+				if(temp.best_offer_id == my_state.agent_id) {
 					speed = speed + 1;
-					to_pay = temp.best_offer;
+					to_pay = temp.best_offer;							
 				} else {
-					i = 1;
 					k = agent.getPoints() + temp.best_offer / 2;
 					agent.setPoints(k);
+					//TODO it don't work correctly
+					break;
 				}
 			}
 		}
+	
+//	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] speed = " + String.valueOf(speed) + " to_pay = " + String.valueOf(to_pay));	
+	
 	: k = agent.getPoints() - to_pay;
 	: agent.setPoints(k);
 	: res = new Action(speed);
 	}
 	
 	void computeBestOffer() using PatternMatch {
-	//We can assume that all agreed on every offer fufilling this conditions
-	: when(IntersectionPlace p (p.distance != null and p.distance >= min_dist and p.distance < max_dist) &
-		OfferMsg m (p.agents.contains(m.agent_id)) ) do {
+	//We can assume that all agreed on every offer fulfilling this conditions
+	: when(IntersectionPlace p (p.distance >= min_dist and p.distance < max_dist) &
+		OfferMsg m (p.onPathOf(m.agent_id)) ) do {
+			//println("[Agent " + String.valueOf(agent.getAgentId()) + "] computing " + String.valueOf(p) + " " + String.valueOf(m));			
 			car = cur_state.get(m.agent_id);
-			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
-			else i = (p.id - car.position + 4) % 4;
+			i = p.distanceFrom(car, len);			
 			//Agents can let someone go even if he had lower offer
 			//Only offers allowed by everyone are: highest offer and "let go" offers
 			//Lowest offer is offer that everyone else "let go" so it wins
-			if(p.best_offer > m.offers.get(i) ) {
+			//-1 means no offer
+			if(p.best_offer < 0 or p.best_offer > m.offers.get(i) ) {
 				p.best_offer = m.offers.get(i);
 				p.best_offer_id = m.agent_id;
 				p.best_offer_speed = i;
@@ -148,40 +159,50 @@ ruleset Car {
 					p.best_offer_speed = i;
 				}
 			}
+			
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] best_offer = " + String.valueOf(p.best_offer));
 		}
 	}
 
 	void removeNotAccepted() using PatternMatch {
 	//Check my offers
 	: when(IntersectionPlace p (p.distance >= min_dist and p.distance < max_dist) &
-		AcceptMsg am (p.agents.contains(am.agent_id))) do {
-			j = am.offers.indexOf(my_state.agent_id);
+		AcceptMsg am (p.onPathOf(am.agent_id))) do {
+			//println("[Agent " + String.valueOf(agent.getAgentId()) + "] my " + String.valueOf(p) + " " + String.valueOf(am));
+			j = am.offers.indexOf(agent.getAgentId());			
 			if(j < 0 or am.speeds.get(j) > p.distance) {
 				//my offer was not accepted
-				p.best_offer = null;
-				p.best_offer_id = null;
-				p.best_offer_speed = null;
+				
+				//println("[Agent " + String.valueOf(agent.getAgentId()) + "] p " + String.valueOf(p.best_offer) + String.valueOf(p.best_offer_id) + String.valueOf(p.best_offer_speed));
+				//TODO fix this
+				p.best_offer = -1;
+				p.best_offer_id = -1;
+				p.best_offer_speed = -1;
 			}
+			
+			//println("[Agent " + String.valueOf(agent.getAgentId()) + "] kupa");
 		}
 	//Check if I accepted
-	:  when(IntersectionPlace p (p.distance != null and p.distance >= min_dist and p.distance < max_dist) &
-		OfferMsg om (p.agents.contains(om.agent_id))) do {
+	:  when(IntersectionPlace p (p.distance >= min_dist and p.distance < max_dist) &
+		OfferMsg om (p.onPathOf(om.agent_id))) do {
+			//println("[Agent " + String.valueOf(agent.getAgentId()) + "] I " + String.valueOf(p) + " " + String.valueOf(om));			
 			car = cur_state.get(om.agent_id);
-			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
-			else i = (p.id - car.position + 4) % 4;
+			i = p.distanceFrom(car, len);
 			j = acc_offers.indexOf(om.agent_id);
 			if(j < 0 or speeds.get(j) > i) {
-				//he is not allowed to go there, so remove him from possible collision list 
-				p.agents.remove(om.agent_id);
-			}
+				//he is not allowed to go there, so remove him from possible collision list
+				p.agents.remove(new Integer(om.agent_id));
+			}			
 		}
 	//Check other's offers
-	: when(IntersectionPlace p (p.distance != null and p.distance >= min_dist and p.distance < max_dist) &
-		OfferMsg om (p.agents.contains(om.agent_id)) &
-		AcceptMsg am (am.agent_id != om.agent_id and p.agents.contains(am.agent_id))) do {
+	: when(IntersectionPlace p (p.distance >= min_dist and p.distance < max_dist) &
+		OfferMsg om (p.onPathOf(om.agent_id)) &
+		AcceptMsg am (am.agent_id != om.agent_id and p.onPathOf(am.agent_id))) do {
+		
+			println("[Agent " + String.valueOf(agent.getAgentId()) + "] other " + String.valueOf(p) + " " + String.valueOf(am) + " " + String.valueOf(om));
+			
 			car = cur_state.get(om.agent_id);
-			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
-			else i = (p.id - car.position + 4) % 4;
+			i = p.distanceFrom(car, len);
 			j = am.offers.indexOf(om.agent_id);
 			if(j < 0 or am.speeds.get(j) > i) {
 				//he is not allowed to go there, so remove him from possible collision list 
@@ -194,6 +215,8 @@ ruleset Car {
 	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] processing Offers");
 	
 	: wm.assertAll(offers);
+	: acc_offers = new ArrayList();
+	: speeds = new ArrayList();
 	: invokeRuleBlock("getAccOffers");
 	: res = new Action(acc_offers, speeds); 
 	}
@@ -201,15 +224,12 @@ ruleset Car {
 	void getAccOffers() using PatternMatch {
 	: when(IntersectionPlace p (p.distance >= min_dist and p.distance < max_dist) &
 		OfferMsg m (p.onPathOf(m.agent_id)) ) do {
-		
-			println("[Agent " + String.valueOf(agent.getAgentId()) + "] geting place: " + p.toString() + " offer: " + m.toString());
-		
+			//println("[Agent " + String.valueOf(agent.getAgentId()) + "] geting place: " + p.toString() + " offer: " + m.toString());		
 			car = cur_state.get(m.agent_id);
-			if(car.place != Position.C) i = len - car.position + (p.id - car.place.num + 4) % 4;
-			else i = (p.id - car.position + 4) % 4;
+			i = p.distanceFrom(car, len);
 			if(p.best_offer < m.offers.get(i) or (p.best_offer == m.offers.get(i) and 
 												 (car.haste > agent.getHaste() or (car.haste == agent.getHaste() and m.agent_id < p.best_offer_id)))) {
-				j = acc_offers.indexOf(m.agent_id);
+				j = acc_offers.indexOf(m.agent_id);				
 				if(j >= 0) {
 					speeds.set(j, Math.min(speeds.get(j), i));
 				} else {
@@ -223,38 +243,23 @@ ruleset Car {
 	void processState() using Script {
 	: println("[Agent " + String.valueOf(agent.getAgentId()) + "] processing State");
 	
-	: cur_state = in_state;	
 	: my_state = cur_state.get(agent.getAgentId());
-	: len = agent.getLength();
 	: pom_seq = new AbleOclSequence(cur_state);
-	: colliding = pom_seq.select(colliding_cars);
-	
-	/*: for(i = 0; i < cur_state.size(); i = i + 1) {
-		car = cur_state.get(i);
-		dbg_bool = car.waiting_time == 0 and (
-			(car.place != Position.C and car.place == my_state.place and car.position > my_state.position) or 
-			(car.place != my_state.place and car.dest == my_state.dest) or 
-			(turn == 2 and (car.place == (my_state.place.num + 3) % 4 or car.dest == (my_state.place.num + 3) % 4)) or
-			(turn == 1 and !(car.place == (my_state.place.num + 1) % 4 and car.dest == my_state.place)));
-		println("[Agent " + String.valueOf(agent.getAgentId()) + "] " + car.place.toString() + " " + car.dest.toString() + " " + String.valueOf(car.position) + " " + String.valueOf(dbg_bool));
-	}*/
-	/*: for(i = 0; i < colliding.size(); i = i + 1) {
-		car = colliding.get(i);
-		println("[Agent " + String.valueOf(agent.getAgentId()) + "] " + car.agent_id);
-	}*/
-		
+	: colliding = pom_seq.select(colliding_cars);		
 	: wm.assertAll(colliding.asSequence());
 	: max_dist = my_state.max_speed + 1;
 	: min_dist = my_state.max_speed + 1;
-	: if(agent.getDest() == my_state.dest) then
-		turn = (agent.getDest().num - agent.getFrom().num + 4) % 4;
-	: if(agent.getDest() != my_state.dest) then
-		turn = (agent.getFrom().num - agent.getDest().num + 4) % 4;
+	: if(agent.getDest() == my_state.dest) then {
+			turn = (agent.getDest().num - agent.getFrom().num + 4) % 4;
+		} else {
+			turn = (agent.getFrom().num - agent.getDest().num + 4) % 4;
+		}
 	//First and last positions on intersection center
-	: if(my_state.place != Position.C) then
-		fst_inters = my_state.place.num;
-	: if(my_state.place == Position.C) then
-		fst_inters = (my_state.position + 3) % 4;
+	: if(my_state.place != Position.C) then {
+			fst_inters = my_state.place.num;
+		} else { 
+			fst_inters = (my_state.position + 3) % 4;
+		}
 	: lst_inters = (my_state.dest.num + 1) % 4;
 	: if(my_state.place == Position.C and lst_inters == my_state.position) fst_inters = lst_inters;
 	//length of my path on the center of intersection (car moves in opposite direction than numbers grow)
@@ -268,8 +273,7 @@ ruleset Car {
 	: my_intersection = pom_seq.select(get_my_intersection);
 	: for(i = 0; i < my_intersection.size(); i = i + 1) {
 			p = my_intersection.get(i);
-			if(my_state.place != Position.C) p.distance = len - my_state.position + (fst_inters - p.id + 4) % 4;
-			else p.distance = (fst_inters - p.id + 4) % 4 + 1;
+			p.distance = p.distanceFrom(my_state, len);
 			
 			println("[Agent " + String.valueOf(agent.getAgentId()) + "] intersection on trajectory: " + String.valueOf(p.id));
 		}
@@ -423,9 +427,7 @@ ruleset Car {
 						
 			println("[Agent " + String.valueOf(agent.getAgentId()) + "] intersection " + String.valueOf(p.id) + " on path of " + String.valueOf(car.agent_id));
 			
-			if(car.place != Position.C) i = len - car.position + (car.place.num - p.id + 4) % 4;
-			else i = (car.position - p.id + 4) % 4;
-			i = (i - 1) / car.max_speed;
+			i = (p.distanceFrom(car, len) - 1) / car.max_speed;
 			//i = number of turns car needs to get to p assuming it will drive with max_speed
 			j = p.future_agents.get(i) + 1;
 			

@@ -1,8 +1,10 @@
 package simulation;
 
-import messages.*;	
+import messages.*;
+	
 import java.util.BitSet;
 import java.util.ArrayList;
+import java.util.List;
 
 import com.ibm.able.Able;
 import com.ibm.able.AbleDefaultAgent;
@@ -38,9 +40,8 @@ public class Agent extends AbleDefaultAgent {
 	private boolean finished;
 	private boolean got_offers;
 	
-	private int min_dist = 0;
-	private int max_dist = 0;
-
+	private List<AgentState> cur_state;
+	
 	public Agent(int length, Integer agent_id, int time_start, Position from, Position dest, int time_from, 
 				 int time_dest, int haste, boolean random_haste, int max_speed, int points) throws AbleException {
 		super("Agent");
@@ -72,7 +73,8 @@ public class Agent extends AbleDefaultAgent {
 			NextRoundMsg msg = (NextRoundMsg) evt.getArgObject();
 			AgentState mystate = msg.state.get(this.agent_id);
 			Action res;
-			this.n_agents = msg.state.size(); 
+			this.n_agents = msg.state.size();
+			this.cur_state = msg.state;
 			commited = new BitSet(n_agents);
 			receaved = new BitSet(n_agents);
 			offers = new ArrayList<OfferMsg>();
@@ -85,10 +87,8 @@ public class Agent extends AbleDefaultAgent {
 				
 				System.out.printf("[Agent %d] gonna process state\n", agent_id);
 				
-				Object[] output = (Object[]) ruleSet.process(new Object[] {this, msg.state, null, null, min_dist, max_dist});
+				Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, null});
 				res = (Action) output[0];
-				min_dist = (Integer) output[1];
-				max_dist = (Integer) output[2];
 			} else res = new Action(0);
 			Object send;
 			if(res.getFinalSpeed() != null) {
@@ -135,7 +135,7 @@ public class Agent extends AbleDefaultAgent {
 	private void gotAllOffers() throws AbleException {
 		System.out.printf("[Agent %d] gonna process offers: %s\n", agent_id, offers.toString());
 		
-		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, offers, null, min_dist, max_dist});
+		Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, offers, null});
 		Action res = (Action) output[0];
 		receaved.clear();
 		receaved.or(commited);
@@ -155,7 +155,7 @@ public class Agent extends AbleDefaultAgent {
 	private void gotAllAccepts() throws AbleException {
 		System.out.printf("[Agent %d] gonna process accepts\n", agent_id);
 		
-		Object[] output = (Object[]) ruleSet.process(new Object[] {this, null, null, accepts, min_dist, max_dist});
+		Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, accepts});
 		Action res = (Action) output[0];
 		notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
 		finished = true;

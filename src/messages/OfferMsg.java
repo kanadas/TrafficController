@@ -15,5 +15,5 @@ public class OfferMsg {
 	public String toString() {
 		return "OfferMsg [agent_id=" + agent_id + ", offers=" + offers + "]";
 	}
-
+	
 }

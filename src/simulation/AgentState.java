@@ -25,6 +25,4 @@ public final class AgentState {
 	public String toString() {
 		return "AgentState [agent_id=" + agent_id + ", position=" + position + ", place=" + place + ", dest=" + dest + ", wait = " + waiting_time + "]\n";
 	}
-	
-	
 }
