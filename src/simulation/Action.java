@@ -1,41 +1,51 @@
 package simulation;
 
-import java.util.ArrayList;
+import java.util.List;
 
-//non-null final_speed means commit speed
-//non-null speeds means accepting offer
 public class Action {
-	private ArrayList<Integer> offers;
-	private ArrayList<Integer> speeds;
+	private Integer offer;
+	private List<Integer> accepts;
 	private Integer final_speed;
 	
-	public Action(ArrayList<Integer> offers) {
-		this.offers = offers;
-		this.speeds = null;
-		this.final_speed = null;
-	}
-	
-	public Action(ArrayList<Integer> offers, ArrayList<Integer> speeds) {
-		this.offers = offers;
-		this.speeds = speeds;
-		this.final_speed = null;
-	}
-	
-	public Action(Integer final_speed) {
+	private Action(Integer offer, List<Integer> accepts, Integer final_speed) {
+		this.offer = offer;
+		this.accepts = accepts;
 		this.final_speed = final_speed;
-		this.offers = null;
-		this.speeds = null;
+	}
+	
+	public static Action offer(Integer offer) {
+		return new Action(offer, null, null);
+	}
+	
+	public static Action accept(List<Integer> accepts) {
+		return new Action(null, accepts, null);
+	}
+	
+	public static Action commit(Integer final_speed) {
+		return new Action(null, null, final_speed);
 	}
 
-	public ArrayList<Integer> getOffers() {
-		return offers;
+	public Integer getOffer() {
+		return offer;
 	}
 
-	public ArrayList<Integer> getSpeeds() {
-		return speeds;
+	public List<Integer> getAccepts() {
+		return accepts;
 	}
 
 	public Integer getFinalSpeed() {
 		return final_speed;
+	}
+	
+	public boolean isOffer() {
+		return offer != null;
+	}
+	
+	public boolean isAccept() {
+		return accepts != null;
+	}
+	
+	public boolean isCommit() {
+		return final_speed != null;
 	}
 }

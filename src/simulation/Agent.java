@@ -89,14 +89,14 @@ public class Agent extends AbleDefaultAgent {
 				
 				Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, null});
 				res = (Action) output[0];
-			} else res = new Action(0);
+			} else res = Action.commit(0);
 			Object send;
-			if(res.getFinalSpeed() != null) {
+			if(res.isCommit()) {
 				send = new FinishedStepMsg(this.agent_id, res.getFinalSpeed());
 				finished = true;
-			} else if(res.getSpeeds() != null)
-				send = new AcceptMsg(this.agent_id, res.getOffers(), res.getSpeeds());
-			else send = new OfferMsg(this.agent_id, res.getOffers());
+			} else if(res.isAccept())
+				send = new AcceptMsg(this.agent_id, res.getAccepts());
+			else send = new OfferMsg(this.agent_id, res.getOffer());
 			receaved.set(this.agent_id);
 			notifyAbleEventListeners(new AbleEvent(this, send));
 			
@@ -142,8 +142,8 @@ public class Agent extends AbleDefaultAgent {
 		got_offers = true;
 		for(AcceptMsg acc: accepts) receaved.set(acc.agent_id);
 		receaved.set(this.agent_id);
-		if(res.getSpeeds() != null)
-			notifyAbleEventListeners(new AbleEvent(this, new AcceptMsg(this.agent_id, res.getOffers(), res.getSpeeds())));
+		if(res.isAccept())
+			notifyAbleEventListeners(new AbleEvent(this, new AcceptMsg(this.agent_id, res.getAccepts())));
 		else { //it cannot be offer
 			notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
 			finished = true;
@@ -162,6 +162,21 @@ public class Agent extends AbleDefaultAgent {
 		
 		System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
 
+	}
+	
+	public Integer computeOffer(Double expected_wait_time) {
+		double max_spend = ((double) haste) / 5 * (double) points; 
+		return (int) Math.round(max_spend * (1 - 1/expected_wait_time));
+	}
+	
+	//Accepting only the offers it must
+	//TODO For now doesn't check if offer intersects
+	public Boolean acceptsOffer(AgentState sender, Integer offer, Integer my_offer) {
+		if(offer != my_offer)
+			return offer > my_offer;
+		if(sender.haste != haste)
+			return sender.haste > haste;
+		return sender.agent_id < agent_id;
 	}
 	
 	public Integer getAgentId() {

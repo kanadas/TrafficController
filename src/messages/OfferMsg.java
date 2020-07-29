@@ -1,19 +1,17 @@
 package messages;
 
-import java.util.List;
-
 public class OfferMsg {
 	public final Integer agent_id;
-	public final List<Integer> offers;
+	public final Integer offer;
 	
-	public OfferMsg(Integer agent_id, List<Integer> offers) {
+	public OfferMsg(Integer agent_id, Integer offer) {
 		this.agent_id = agent_id;
-		this.offers = offers;
+		this.offer = offer;
 	}
 
 	@Override
 	public String toString() {
-		return "OfferMsg [agent_id=" + agent_id + ", offers=" + offers + "]";
+		return "OfferMsg [agent_id=" + agent_id + ", offer=" + offer + "]";
 	}
 	
 }
