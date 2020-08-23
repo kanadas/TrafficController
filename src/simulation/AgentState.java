@@ -1,17 +1,17 @@
 package simulation;
 
-import simulation.Position;
+import simulation.Direction;
 
 public final class AgentState {
 	public final Integer agent_id;
 	public final int position; //negative - before intersection, positive - after intersection
-	public final Position place;
-	public final Position dest;
+	public final Direction place;
+	public final Direction dest;
 	public final int waiting_time;
 	public final int max_speed; //it's not changing, but here is more convinient
 	public final int haste; //a bit of cheating
 	
-	public AgentState(Integer agent_id, int position, Position place, Position dest, int waiting_time, int max_speed, int haste) {
+	public AgentState(Integer agent_id, int position, Direction place, Direction dest, int waiting_time, int max_speed, int haste) {
 		this.agent_id = agent_id;
 		this.position = position;
 		this.place = place;

@@ -16,5 +16,4 @@ public class AcceptMsg {
 		return "AcceptMsg [agent_id=" + agent_id + ", offers=" + offers + "]";
 	}
 	
-	public 
 }

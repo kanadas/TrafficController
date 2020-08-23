@@ -14,6 +14,7 @@ public class TrafficApp {
 			int length = scanner.nextInt();
 			int n_agents = scanner.nextInt();
 			int n_steps = scanner.nextInt();
+			Object mutex = new Object();
 			ArrayList<Agent> agents = new ArrayList<Agent>();
 			for(int i = 0; i < n_agents; ++i) {
 				int t_start = scanner.nextInt();
@@ -28,8 +29,8 @@ public class TrafficApp {
 				//String type = scanner.next(); //TODO
 				int max_speed = scanner.nextInt();
 				int points = scanner.nextInt();
-				agents.add(new Agent(length, i, t_start, Position.fromString(from), Position.fromString(dest), 
-						t_from, t_dest, haste, random_haste, max_speed, points));
+				agents.add(new Agent(length, i, t_start, Direction.fromString(from), Direction.fromString(dest), 
+						t_from, t_dest, haste, random_haste, max_speed, points, mutex));
 			}			
 			scanner.close();
 			CountDownLatch latch = new CountDownLatch(1);

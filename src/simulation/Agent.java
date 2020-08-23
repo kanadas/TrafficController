@@ -1,6 +1,7 @@
 package simulation;
 
 import messages.*;
+import logging.Logger; 
 	
 import java.util.BitSet;
 import java.util.ArrayList;
@@ -16,13 +17,14 @@ import com.ibm.able.rules.AbleRuleSetImpl;
 public class Agent extends AbleDefaultAgent {
 
 	private static final long serialVersionUID = 9143011496195622412L;
+	private Logger logger;
 	
 	private final Integer agent_id;
 	private int length;
 	private int time_start;
 	private int n_agents;
-	private Position from;
-	private Position dest;
+	private Direction from;
+	private Direction dest;
 	private int time_from;
 	private int time_dest;
 	private int haste;
@@ -32,18 +34,18 @@ public class Agent extends AbleDefaultAgent {
 	private String rules;
 	AbleRuleSet ruleSet;
 	
-	//TODO this structures aren't thread-safe
 	private BitSet commited;
 	private BitSet receaved;
 	private ArrayList<OfferMsg> offers;
 	private ArrayList<AcceptMsg> accepts;
 	private boolean finished;
 	private boolean got_offers;
+	private Object mutex; 
 	
 	private List<AgentState> cur_state;
 	
-	public Agent(int length, Integer agent_id, int time_start, Position from, Position dest, int time_from, 
-				 int time_dest, int haste, boolean random_haste, int max_speed, int points) throws AbleException {
+	public Agent(int length, Integer agent_id, int time_start, Direction from, Direction dest, int time_from, 
+				 int time_dest, int haste, boolean random_haste, int max_speed, int points, Object mutex) throws AbleException {
 		super("Agent");
 		this.length = length;
 		this.agent_id = agent_id;
@@ -58,6 +60,8 @@ public class Agent extends AbleDefaultAgent {
 		this.points = points;
 		this.rules = "rules/Car.arl";
 		this.ruleSet = new AbleRuleSetImpl();
+		this.logger = new Logger(this.agent_id);
+		this.mutex = mutex;
 		reset();
 		init();
 	}
@@ -67,6 +71,7 @@ public class Agent extends AbleDefaultAgent {
         setAbleEventProcessingEnabled(Able.ProcessingEnabled_PostingEnabled); 
 	}	
 	
+	//TODO ogarnąć porządnie wielowątkowość
 	@Override
 	public void processAbleEvent(AbleEvent evt) throws AbleException {		
 		if(evt.getArgObject() instanceof NextRoundMsg) {
@@ -85,10 +90,14 @@ public class Agent extends AbleDefaultAgent {
 				ruleSet.parseFromARL(rules);
 				ruleSet.init();
 				
-				System.out.printf("[Agent %d] gonna process state\n", agent_id);
-				
-				Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, null});
-				res = (Action) output[0];
+				logger.debug("will process state");
+				try {
+					Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, null});
+					res = (Action) output[0];
+				} catch (Exception e) {
+					logger.error(e.getMessage());
+					throw new AbleException(e.getMessage());
+				}
 			} else res = Action.commit(0);
 			Object send;
 			if(res.isCommit()) {
@@ -97,85 +106,109 @@ public class Agent extends AbleDefaultAgent {
 			} else if(res.isAccept())
 				send = new AcceptMsg(this.agent_id, res.getAccepts());
 			else send = new OfferMsg(this.agent_id, res.getOffer());
-			receaved.set(this.agent_id);
-			notifyAbleEventListeners(new AbleEvent(this, send));
-			
-			System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
-
+			synchronized(mutex) {
+				receaved.set(this.agent_id);
+				notifyAbleEventListeners(new AbleEvent(this, send));	
+			}
+			logger.trace("finished");
+			if(receaved.cardinality() == n_agents && !finished) {
+				gotAllOffers();
+			}
 		} else if(evt.getArgObject() instanceof OfferMsg && !finished) {
 			OfferMsg msg = (OfferMsg) evt.getArgObject();
-			offers.add(msg);
-			receaved.set(msg.agent_id);
-			
-			//System.out.printf("[Agent %d] got offers: %s card = %d size = %d\n", agent_id, receaved, receaved.cardinality(), receaved.size());
-			
+			synchronized(mutex) {
+				offers.add(msg);
+				receaved.set(msg.agent_id);			
+			}
 			if(receaved.cardinality() == n_agents) {
 				gotAllOffers();
 			}
 		} else if(evt.getArgObject() instanceof AcceptMsg && !finished) {
 			AcceptMsg msg = (AcceptMsg) evt.getArgObject();
-			accepts.add(msg);
-			if(got_offers) receaved.set(msg.agent_id);
-			else commited.nextSetBit(msg.agent_id);
+			synchronized(mutex) {
+				accepts.add(msg);
+				if(got_offers) receaved.set(msg.agent_id);
+				else commited.nextSetBit(msg.agent_id);
+			}
 			if(got_offers && receaved.cardinality() == n_agents) {
 				gotAllAccepts();
 			}
 		} else if(evt.getArgObject() instanceof FinishedStepMsg && !finished) {
 			FinishedStepMsg msg = (FinishedStepMsg) evt.getArgObject();
-			commited.set(msg.agent_id);
-			receaved.set(msg.agent_id);			
-			if(receaved.cardinality() == n_agents) {
-				if(got_offers) gotAllAccepts();
-				else gotAllOffers();
+			synchronized(mutex) {
+				commited.set(msg.agent_id);
 			}
-			
-		}		
+			if(!receaved.get(msg.agent_id)) {
+				receaved.set(msg.agent_id);			
+				if(receaved.cardinality() == n_agents) {
+					if(got_offers) gotAllAccepts();
+					else gotAllOffers();
+				}
+			}
+		}
 	}
 	
+	//TODO if some commited instead of send offer use information about his commited speed
 	private void gotAllOffers() throws AbleException {
-		System.out.printf("[Agent %d] gonna process offers: %s\n", agent_id, offers.toString());
-		
-		Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, offers, null});
-		Action res = (Action) output[0];
-		receaved.clear();
-		receaved.or(commited);
-		got_offers = true;
-		for(AcceptMsg acc: accepts) receaved.set(acc.agent_id);
-		receaved.set(this.agent_id);
-		if(res.isAccept())
-			notifyAbleEventListeners(new AbleEvent(this, new AcceptMsg(this.agent_id, res.getAccepts())));
-		else { //it cannot be offer
-			notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
-			finished = true;
+		logger.debug("will process offers: %s", offers.toString());
+		try {
+			Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, offers, null});
+			Action res = (Action) output[0];
+			synchronized(mutex) {
+				receaved.clear();
+				receaved.or(commited);
+				got_offers = true;
+				for(AcceptMsg acc: accepts) receaved.set(acc.agent_id);
+				receaved.set(this.agent_id);
+				if(res.isAccept())
+					notifyAbleEventListeners(new AbleEvent(this, new AcceptMsg(this.agent_id, res.getAccepts())));
+				else { //it cannot be offer
+					notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
+					finished = true;
+				}
+			}
+			if(receaved.cardinality() == n_agents && !finished) {
+				gotAllAccepts();
+			}
+		} catch (Exception e) {
+			logger.error(e.getMessage());
+			throw new AbleException(e.getMessage());
 		}
 		
-		System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
+		logger.trace("finished");
 	}
 	
 	private void gotAllAccepts() throws AbleException {
-		System.out.printf("[Agent %d] gonna process accepts\n", agent_id);
-		
-		Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, accepts});
-		Action res = (Action) output[0];
-		notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
-		finished = true;
-		
-		System.out.println("[Agent " + String.valueOf(this.getAgentId()) + "] finished");
-
+		logger.debug("will process accepts");
+		try {
+			Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, accepts});
+			Action res = (Action) output[0];
+			synchronized(mutex) {
+				notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(this.agent_id, res.getFinalSpeed())));
+				finished = true;
+			}	
+			logger.trace("finished");
+		} catch (Exception e) {
+			logger.error(e.getMessage());
+			throw new AbleException(e.getMessage());
+		}
 	}
 	
 	public Integer computeOffer(Double expected_wait_time) {
-		double max_spend = ((double) haste) / 5 * (double) points; 
-		return (int) Math.round(max_spend * (1 - 1/expected_wait_time));
+		double max_spend = ((double) haste) / 5.0 * (double) points;
+		logger.debug("max_spend = %f, real offer = %f", max_spend, max_spend * (1.0 - 1.0/(expected_wait_time + 1.0)));
+		return (int) Math.round(max_spend * (1.0 - 1.0/(expected_wait_time + 1.0)));
 	}
 	
 	//Accepting only the offers it must
-	//TODO For now doesn't check if offer intersects
-	public Boolean acceptsOffer(AgentState sender, Integer offer, Integer my_offer) {
+	public Boolean acceptsOffer(AgentState sender, int offer, int my_offer) {		
+		logger.trace("Checking if offer %d from %d is better than my offer %d", offer, sender.agent_id, my_offer);
 		if(offer != my_offer)
 			return offer > my_offer;
+		logger.trace("Draw in offers, comparing haste %d with my haste %d", sender.haste, haste);
 		if(sender.haste != haste)
 			return sender.haste > haste;
+		logger.trace("Draw in hastes, comparing agent id %d with my %d", sender.agent_id, agent_id);
 		return sender.agent_id < agent_id;
 	}
 	
@@ -191,11 +224,11 @@ public class Agent extends AbleDefaultAgent {
 		return this.time_start;
 	}
 	
-	public Position getFrom() {
+	public Direction getFrom() {
 		return this.from;
 	}
 	
-	public Position getDest() {
+	public Direction getDest() {
 		return this.dest;
 	}
 	
