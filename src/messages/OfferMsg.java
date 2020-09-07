@@ -13,5 +13,13 @@ public class OfferMsg {
 	public String toString() {
 		return "OfferMsg [agent_id=" + agent_id + ", offer=" + offer + "]";
 	}
+
+	public Integer getAgentId() {
+		return agent_id;
+	}
+
+	public Integer getOffer() {
+		return offer;
+	}
 	
 }

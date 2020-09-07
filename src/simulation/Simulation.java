@@ -3,6 +3,7 @@ package simulation;
 import messages.*;
 import logging.Logger;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.Vector;
@@ -20,21 +21,24 @@ public class Simulation extends AbleDefaultAgent {
 	private static final long serialVersionUID = -7429691757214576852L;
 	private static Logger logger = new Logger(Simulation.class);
 	private static Random rand = new Random();
+	private static int HASTE_LEVELS = 6;
 	private int length;
 	private int steps;
 	private int cur_step;
 	private ArrayList<Agent> agents;
 	private ArrayList<AgentState> curr_state;
-	private ArrayList<Integer> velocity;
+	private Integer[] velocity;
 	private Intersection intersection;
 	private BitSet finished;
-	private Float sum_intersection_time;
+	private Double sum_intersection_time;
 	private int num_intersection_cross;
 	private Integer max_messages;
 	private Integer min_messages;
 	private Float sum_messages;
-	private ArrayList<Integer> curr_msgs;
-	private ArrayList<Integer> curr_time;
+	private Integer[] curr_msgs;
+	private Integer[] curr_time;
+	private Double[] haste_sum_time;
+	private Integer[] haste_cross;
 	private Object mutex = new Object();
 	private CountDownLatch latch;
 	
@@ -50,20 +54,24 @@ public class Simulation extends AbleDefaultAgent {
 		this.latch = latch;
 		this.intersection = new Intersection(length);
 		this.curr_state = new ArrayList<AgentState>();
-		this.velocity = new ArrayList<Integer>();
-		this.curr_msgs = new ArrayList<Integer>();
-		this.curr_time = new ArrayList<Integer>();
 		this.finished = new BitSet(agents.size());
-		this.sum_intersection_time = 0F;
+		this.sum_intersection_time = 0.0;
 		this.num_intersection_cross = 0;
 		this.max_messages = null;
 		this.min_messages = null;
 		this.sum_messages = 0F;
+		this.velocity = new Integer[agents.size()];
+		Arrays.fill(this.velocity, 0);
+		this.curr_msgs = new Integer[agents.size()];
+		Arrays.fill(this.curr_msgs, 0);
+		this.curr_time = new Integer[agents.size()];
+		Arrays.fill(this.curr_time, 0);
+		this.haste_sum_time = new Double[HASTE_LEVELS];
+		Arrays.fill(this.haste_sum_time, 0.0);
+		this.haste_cross = new Integer[HASTE_LEVELS];
+		Arrays.fill(this.haste_cross, 0);
 		for(Agent agent: agents) {
 			curr_state.add(new AgentState(agent.getAgentId(), 0, agent.getFrom(), agent.getDest(), agent.getTimeStart(), agent.getMaxSpeed(), agent.getHaste()));
-			velocity.add(0);
-			curr_msgs.add(0);
-			curr_time.add(0);
 		}
 	}
 	
@@ -76,7 +84,6 @@ public class Simulation extends AbleDefaultAgent {
 		logger.trace("NextRound");
 		logger.trace("\n" + curr_state.toString());
 		logger.trace("Agent points: %s", agents.stream().map(Agent::getPoints).collect(Collectors.toList()).toString());
-
 		finished.clear();
 		if(cur_step == steps) {
 			finish();
@@ -94,7 +101,7 @@ public class Simulation extends AbleDefaultAgent {
 			agentSendMessage(msg.agent_id);
 			synchronized(mutex) {
 				finished.set(msg.agent_id);
-				velocity.set(msg.agent_id, msg.speed);
+				velocity[msg.agent_id] = msg.speed;
 				if(finished.cardinality() == agents.size())
 					finishRound();
 			}
@@ -111,7 +118,7 @@ public class Simulation extends AbleDefaultAgent {
 		if(curr_state.get(agent_id).waiting_time == 0) {
 			synchronized(mutex) {
 				sum_messages++;
-				curr_msgs.set(agent_id, curr_msgs.get(agent_id) + 1);
+				curr_msgs[agent_id]++;
 			}
 		}
 	}
@@ -151,13 +158,11 @@ public class Simulation extends AbleDefaultAgent {
 		for(int i = 0; i < agents.size(); ++i) {
 			AgentState state1 = prev_state.get(i);
 			if(state1.waiting_time > 0) continue;
-			int velocity1 = velocity.get(i);
 			for(int j = 0; j < i; ++j) {
 				AgentState state2 = prev_state.get(j);
 				if(state2.waiting_time > 0) continue;
-				int velocity2 = velocity.get(j);
-				if(willDriveInto(state1, velocity1, state2, velocity2) || willDriveInto(state2, velocity2, state1, velocity1)) {
-					detectedCollision(state1, velocity1, state2, velocity2);
+				if(willDriveInto(state1, velocity[i], state2, velocity[j]) || willDriveInto(state2, velocity[j], state1, velocity[i])) {
+					detectedCollision(state1, velocity[i], state2, velocity[j]);
 					collisions.add(i);
 					collisions.add(j);
 				}
@@ -166,30 +171,34 @@ public class Simulation extends AbleDefaultAgent {
 		boolean starting_free[] = {true, true, true, true};
 		for(int i = 0; i < agents.size(); ++i) {
 			AgentState state = prev_state.get(i);
-			if(state.place != Direction.C && state.waiting_time == 0 && state.position == 0 && velocity.get(i) == 0) 
+			if(state.place != Direction.C && state.waiting_time == 0 && state.position == 0 && velocity[i] == 0) 
 				starting_free[state.place.num] = false;
 		}
 		for(int i = 0; i < agents.size(); ++i) {
 			AgentState state = prev_state.get(i);
 			Agent agent = agents.get(i);
-			int position = state.position + velocity.get(i);
+			int position = state.position + velocity[i];
 			Direction place = state.place;
 			Direction dest = state.dest;
 			int waiting_time = state.waiting_time;			
 			sum_intersection_time++;
+			haste_sum_time[agent.getHaste()]++;
 			if(collisions.contains(i)) {
 				sum_intersection_time--;
+				haste_sum_time[agent.getHaste()]--;
 				waiting_time = Integer.MAX_VALUE;
 				position = -1;
 				place = Direction.N;
 			} else if(waiting_time > 0) {
 				sum_intersection_time--;
+				haste_sum_time[agent.getHaste()]--;
 				waiting_time--;
 				if(waiting_time == 0) {
 					if(starting_free[state.place.num]) {
 						num_intersection_cross++;
 						starting_free[state.place.num] = false;
 						if(agent.isRandomHaste()) agent.setHaste(rand.nextInt() % 6);
+						haste_cross[agent.getHaste()]++;
 					} else {
 						//Wait till starting place frees
 						waiting_time++;
@@ -197,7 +206,7 @@ public class Simulation extends AbleDefaultAgent {
 				}
 			} else if(place == Direction.C) {
 				position = state.position;
-				int len = velocity.get(i);
+				int len = velocity[i];
 				while(len > 0 && position != (dest.num + 1) % 4) {
 					len --;
 					position = (position + 3) % 4;
@@ -214,13 +223,13 @@ public class Simulation extends AbleDefaultAgent {
 					if(agent.getFrom() == dest) {
 						dest = agent.getDest();
 						waiting_time = agent.getTimeDest();
-						int nmsgs =  curr_msgs.get(i);
+						int nmsgs =  curr_msgs[i];
 						logger.debug("Agent %d send %d messages", agent.getAgentId(), nmsgs);
 						if(min_messages == null) min_messages = nmsgs;
 						else min_messages = Math.min(min_messages, nmsgs);
 						if(max_messages == null) max_messages = nmsgs;
 						else max_messages = Math.max(max_messages, nmsgs);
-						curr_msgs.set(i, 0);
+						curr_msgs[i] = 0;
 					} else {
 						dest = agent.getFrom();
 						waiting_time = agent.getTimeFrom();
@@ -289,8 +298,15 @@ public class Simulation extends AbleDefaultAgent {
 	}
 	
 	private void finish() {
-		System.out.println(sum_intersection_time / num_intersection_cross);
-		System.out.println(max_messages + " " + min_messages + " " + (sum_messages / num_intersection_cross));
+		System.out.printf("%.4f", sum_intersection_time / num_intersection_cross);
+		for(int i = 0; i < HASTE_LEVELS; ++i) {
+			if(haste_cross[i] == 0) {
+				System.out.print(" 0");
+			} else {
+				System.out.printf(" %.4f", (haste_sum_time[i] / haste_cross[i]));
+			}
+		}
+		System.out.printf("\n%d %d %.4f\n", max_messages, min_messages, (sum_messages / num_intersection_cross));
 		latch.countDown();
 	}
 }

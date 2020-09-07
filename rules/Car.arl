@@ -1,13 +1,9 @@
 //Offer values are based on haste, current money and approximate expected waiting time if let go 
 //Bidding rules:
-//Every agent either passes and let everyone go, or sends it's offer
-//After getting decisions from all other agents, agent processes them and decides what can he accept
+//After getting bids from all other agents, agent processes them and decides what can he accept
 //Agent may accept lower offer than his, but cannot refuse higher offer
-//If agent accepts some speed, it accepts all higher speeds
-//TODO If two agents accept each other, then: 1. if some let lower offer go first, then it stays 2. wins bigger difference in offers 3. wins earlier offer
-//If there are two equal offers wins agent with bigger haste, if they have equal haste wins agent TODO with smaller agent_id
+//If there are two equal offers wins agent with bigger haste, if they have equal haste wins agent with smaller agent_id
 
-//TODO check 151 
 ruleset Car {
 	import java.lang.String;
 	import java.lang.Math;
@@ -33,46 +29,32 @@ ruleset Car {
 		List cur_state;
 		List offers;
 		List accepts;
+		
+		Integer len;		
 		static AgentState my_state;
-		Action res;
-		Integer speed;
-		Integer n_messages = 0;
-		Integer i;
-		Integer j;
-		Integer k;
-		Integer turns_to;
-		Integer len;
 		static Integer max_dist;
 		static Integer min_dist;
-
 		static Intersection intersection;
-		AbleOclSequence pom_seq;
-		AbleOclSequence colliding;
 		static CenterPlace fst_center;
 		static CenterPlace lst_center;
-		Integer center_len;
+		static Integer center_len;
 		static List center_path;
 		static List intersecting_agents = new ArrayList();
-		CenterPlace temp;
-		CenterPlace temp2;
+		static Integer offer;
+		static List accepted_offers;
+		
 		Double expected_wait_time;
 		Double expected_total_time;
-		
-		AgentState car;
-		AgentState car2;
-		CenterPlace p;
-		Double tmp;
-		Integer accepted;
-		Integer paying;
-		
-		Double max_spend;
+		Boolean accepted;
 		Double sum_wait;
-		static Integer offer;
-		
-		static List accepted_offers;
-		Integer delta_pts;
+		Integer payment;
+		Integer new_payment;
+		Boolean paying;
+		Integer speed;
+		Action res;	
 
-		//TODO for now it doesn't consider agents behind me
+		AgentState car;
+		//keep only agents that can impact my decision (the ones behind are removed)
 		Expression Collides = car.agent_id != my_state.agent_id and car.waiting_time == 0 and
 			(intersection.isInFront(my_state, car) or intersection.trajectoriesIntersect(my_state, car));
 		Selector collidingCars = new Selector(this.getVariable("car"), Collides, true);
@@ -82,8 +64,10 @@ ruleset Car {
 
 	outputs{res};
 
-	//TODO serve case when agent commits without responding to offer
 	void process() using Script {
+	variables {
+		Integer new_points;
+	}
 	: logger = new Logger(agent.getAgentId());
 	: logger.trace("processing");
 	: len = agent.getLength();
@@ -95,10 +79,21 @@ ruleset Car {
 		} 
 	: if(accepts != null) {
 			invokeRuleBlock("processAccepts");
-		}		
+			if(paying) {
+				payment = payment - offer;
+			}
+			logger.trace("speed = %d, payment = %d", speed, payment);	
+			new_points = agent.getPoints() + payment;
+			agent.setPoints(new_points);
+			res = Action.commit(speed);
+		}
 	}
 	
 	void processState() using Script {
+	variables {
+		AbleOclSequence pom_seq;
+		AbleOclSequence colliding;
+	}
 	: logger.trace("processing State");
 	: my_state = cur_state.get(agent.getAgentId());	
 	: intersection = new Intersection(len);
@@ -138,7 +133,7 @@ ruleset Car {
 			logger.trace("greedy speed: %d", speed);
 		}
 	[1] : preconditions (my_state.place != Direction.C and my_state.position + max_dist < len) decisions {
-			//If I cannot arrive intersection, act greedly (TODO proposing car in front of me to move)
+			//If I cannot arrive intersection, act greedly
 			speed = max_dist;
 			res = Action.commit(speed);
 			logger.trace("greedy speed: %d", speed);
@@ -153,6 +148,7 @@ ruleset Car {
 				logger.trace("greedy speed: %d", speed);
 			} else {
 				invokeRuleBlock("valuePlaces");
+				logger.debug("expected_total_time = %f", expected_total_time);
 				offer = agent.computeOffer(expected_total_time); 
 				res = Action.offer(offer);
 			}
@@ -160,15 +156,19 @@ ruleset Car {
 	}
 	
 	void computeStatistics() using PatternMatch {
+	variables {
+		Integer turns_to;
+		Integer tmp;
+	}
 	: logger.trace("computing Statistics");
 	//for every such position compute how on many agent trajectories it lies (and some addidtional statistics) 
 	: when(AgentState car (car.place != car.dest) &
 		CenterPlace p (intersection.onTrajectory(p, car))) do {
 			logger.debug("intersection %d on path of %d, distance=%d ", p.id, car.agent_id, intersection.distance(car, p));
 			turns_to = (intersection.distance(car, p) - 1) / car.max_speed;
-			i = p.future_agents.get(turns_to) + 1;
-			logger.debug("turns_to = %d, i = %d", turns_to, i);
-			p.future_agents.set(turns_to, i);
+			tmp = p.future_agents.get(turns_to) + 1;
+			logger.debug("turns_to = %d, new value = %d", turns_to, tmp);
+			p.future_agents.set(turns_to, tmp);
 			if(turns_to == 0) {
 				p.agents.add(car.agent_id);
 				intersecting_agents.add(car.agent_id);
@@ -179,33 +179,31 @@ ruleset Car {
 		}
 	}
 		
-	void valuePlaces() using Script {
+	void valuePlaces() using PatternMatch {
 	: logger.trace("computing Offer");
 	: expected_total_time = 0;  	
-	: for(i = center_path.size() - 1 ; i >= 0 ; i = i - 1) {
-			invokeRuleBlock("expectedWaiting(Integer)", new Object[] {i}); //cannot nest loops
-			//expected waiting time + time to cross intersection (if going with max_speed)
-			expected_total_time = expected_total_time + expected_wait_time + ((center_len - i - 1) / agent.getMaxSpeed() + 1);			
-			logger.debug("expected_total_time = %f, expected_wait_time = %f", expected_total_time, expected_wait_time);
+	: when(CenterPlace p (center_path.contains(p))) do {
+			expected_wait_time = 0;
+			invokeRuleBlock("expectedWaiting(CenterPlace,Integer,Integer)", new Object[] {p, 0, 0});
+			logger.debug("expected_wait_time = %f for place %d", expected_wait_time, p.id);
+			expected_total_time = expected_total_time + expected_wait_time;
 		}
 	}
 	
-	//TODO think about it
-	void expectedWaiting(Integer place_idx) using Script {
-	: j = 1;
-	: temp = center_path.get(place_idx);
-	//TODO sth like j = List.findFirst (and rename j to sth meaningfull)	
-	: while ( j < len and temp.future_agents.get(j) > 0 ) do {
-			j = j+1;
+	//assume that every agent have the same chance to cross intersection in this place, and all except one will wait
+	void expectedWaiting(CenterPlace place, Integer waiting_for, Integer agents_waiting) using Script {	
+	variables {
+		Double chance_to_go;
+	}
+	: agents_waiting = place.getFutureAgents().get(waiting_for) + agents_waiting;
+	: if(agents_waiting != 0) {
+			chance_to_go = 1/((Double) agents_waiting + 1);
+			//recursively compute expected waiting if waiting now
+			invokeRuleBlock("expectedWaiting(CenterPlace,Integer,Integer)", new Object[] {place, waiting_for + 1, agents_waiting - 1});
+			expected_wait_time = (1 - chance_to_go) * (expected_wait_time + 1); //+ 0*chance_to_go
+		} else {
+			expected_wait_time = 0;
 		}
-	: j = j - 1;
-	: expected_wait_time = 0;
-	: for( ; j > 0; j = j - 1) {
-			//assume that every agent have the same chance to cross intersection in this place 
-			//it's technically not expected value
-			expected_wait_time = (1 - 1/((Double) temp.future_agents.get(j) + 1))*(expected_wait_time + 1); 
-		}
-	: logger.debug("expected_wait_time = %f for place %d", expected_wait_time, place_idx);
 	}
 		
 	void processOffers() using Script {
@@ -227,45 +225,40 @@ ruleset Car {
 		}	
 	}
 	
-	void processAccepts() using Script {
+	void processAccepts() using PatternMatch {
+	variables {
+		Integer distance;
+	}
 	: logger.trace("processing Accepts");
 	: wm.assertAll(accepts);
-	: speed = -1;
-	: delta_pts = 0;
-	: paying = 0;	
-	: for(i = 0 ; i < center_path.size(); i = i + 1) {
-			temp = center_path.get(i);	
-			if(intersection.distance(my_state, temp) > min_dist) { //TODO sth prettier
-				if(!temp.agents.isEmpty()) {
-					invokeRuleBlock("checkAgents(CenterPlace)", new Object[] {temp}); //cannot nest loops
-					if(accepted == 1) {
-						if(speed == -1) speed = intersection.distance(my_state, temp) - 1; //TODO refactor 
-					} else {
-						paying = 1;
-					}
-				}
+	: speed = max_dist;
+	: paying = false;
+	: payment = 0;
+	: when(CenterPlace p (center_path.contains(p) and intersection.distance(my_state, p) > min_dist and !p.agents.isEmpty())) do {
+			invokeRuleBlock("checkAgents(CenterPlace)", new Object[] {p});
+			distance = intersection.distance(my_state, p) - 0;
+			if(accepted && speed >= distance) {
+				logger.debug("Cannot go further than %d, new payment = %d", distance, new_payment);
+				speed = distance - 1;
+				payment = new_payment;
+				paying = false;
 			}
 		}
-	: if(speed == -1) speed = max_dist;
-	: if(paying == 1) delta_pts = delta_pts - offer;
-	: logger.trace("speed = %d, delta_pts = %d", speed, delta_pts);	
-	: k = agent.getPoints() + delta_pts;
-	: agent.setPoints(k);
-	: res = Action.commit(speed);
 	}
 	
-	void checkAgents(CenterPlace p) using Script {
+	void checkAgents(CenterPlace p) using PatternMatch {
 	: logger.trace("checking agents for place %d", p.getId());
-	: for(j = 0; j < p.getAgents().size(); j = j + 1) {
-			k = p.getAgents().get(j);
-			car = cur_state.get(k);
-			if(accepted_offers.contains(car.agent_id)) {
-				accepted = 1;
-				invokeRuleBlock("checkIfAccepted(CenterPlace,AgentState)", new Object[] {p, car});
-				if(accepted == 1) {
+	: when(AgentState car (p.getAgents().contains(car.agent_id))) do {
+			accepted = true;
+			invokeRuleBlock("checkIfAccepted(CenterPlace,AgentState)", new Object[] {p, car});
+			if(accepted) {
+				if(accepted_offers.contains(car.agent_id)) {
 					logger.trace("agent %d blocks my path on position %d", car.agent_id, p.getId());
-					invokeRuleBlock("getPayment(AgentState)", new Object[] {car});
-					break;
+					invokeRuleBlock("getPayment(CenterPlace,AgentState)", new Object[] {p,car});
+				} else {
+					logger.trace("I block path of agent %d position %d", car.agent_id, p.getId());
+					accepted = false;
+					paying = true;
 				}
 			}
 		}
@@ -274,18 +267,22 @@ ruleset Car {
 	void checkIfAccepted(CenterPlace dest, AgentState car) using PatternMatch {
 	: logger.debug("checking if %s is accepted for %s", dest.toString(), car.toString());
 	//Find place on which car is forbidden to enter
-	: when(CenterPlace p (true) &
-		AcceptMsg msg (msg.agent_id != car.agent_id and p.onPathOf(msg.agent_id) and !msg.offers.contains(car.agent_id)) &
-		OfferMsg offer (offer.agent_id == car.agent_id)) do {
+	
+	: when(CenterPlace p (accepted) &
+		AcceptMsg msg (msg.agent_id != car.getAgentId() and p.onPathOf(msg.agent_id) and !msg.offers.contains(car.getAgentId())) &
+		OfferMsg offer (offer.agent_id == car.getAgentId())) do {
+			
 			if(intersection.distance(car, p) <= intersection.distance(car, dest)) {
-				accepted = 0;
+				accepted = false;
+				logger.debug("place not accepted");
 			}
 		}
 	}
-	
-	void getPayment(AgentState car) using PatternMatch {
-	: when(OfferMsg offer (offer.agent_id == car.agent_id)) do {
-			delta_pts = delta_pts + offer.offer; 
+
+//For unknown reason, without this first unused parameter, function doesn't work anymore
+	void getPayment(CenterPlace p, AgentState car) using PatternMatch {
+	: when(OfferMsg offer (offer.agent_id == car.getAgentId())) do {
+			new_payment = offer.offer;
 		}
 	}	
 }

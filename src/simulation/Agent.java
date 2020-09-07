@@ -71,7 +71,6 @@ public class Agent extends AbleDefaultAgent {
         setAbleEventProcessingEnabled(Able.ProcessingEnabled_PostingEnabled); 
 	}	
 	
-	//TODO ogarnąć porządnie wielowątkowość
 	@Override
 	public void processAbleEvent(AbleEvent evt) throws AbleException {		
 		if(evt.getArgObject() instanceof NextRoundMsg) {
@@ -95,7 +94,7 @@ public class Agent extends AbleDefaultAgent {
 					Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, null});
 					res = (Action) output[0];
 				} catch (Exception e) {
-					logger.error(e.getMessage());
+					System.err.println(e.getMessage());
 					throw new AbleException(e.getMessage());
 				}
 			} else res = Action.commit(0);
@@ -148,7 +147,6 @@ public class Agent extends AbleDefaultAgent {
 		}
 	}
 	
-	//TODO if some commited instead of send offer use information about his commited speed
 	private void gotAllOffers() throws AbleException {
 		logger.debug("will process offers: %s", offers.toString());
 		try {
@@ -171,7 +169,7 @@ public class Agent extends AbleDefaultAgent {
 				gotAllAccepts();
 			}
 		} catch (Exception e) {
-			logger.error(e.getMessage());
+			System.err.println(e.getMessage());
 			throw new AbleException(e.getMessage());
 		}
 		
@@ -189,13 +187,13 @@ public class Agent extends AbleDefaultAgent {
 			}	
 			logger.trace("finished");
 		} catch (Exception e) {
-			logger.error(e.getMessage());
+			System.err.println(e.getMessage());
 			throw new AbleException(e.getMessage());
 		}
 	}
 	
 	public Integer computeOffer(Double expected_wait_time) {
-		double max_spend = ((double) haste) / 5.0 * (double) points;
+		double max_spend = ((double) haste + 1) / 6.0 * (double) points;
 		logger.debug("max_spend = %f, real offer = %f", max_spend, max_spend * (1.0 - 1.0/(expected_wait_time + 1.0)));
 		return (int) Math.round(max_spend * (1.0 - 1.0/(expected_wait_time + 1.0)));
 	}
