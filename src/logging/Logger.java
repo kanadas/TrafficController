@@ -26,54 +26,54 @@ public class Logger {
 	
 	public void _debug(String msg, Object ...objects) {
 		if(logLevel <= DEBUG) {
-			synchronized (printMutex) { 
+//			synchronized (printMutex) { 
 				System.out.printf(prefix + "DEBUG: " + msg + "\n", objects);
-				System.out.flush();
-			}
+//				System.out.flush();
+//			}
 		}
 	}
 	
 	public void _trace(String msg, Object ...objects) {		
 		if(logLevel <= TRACE) {
-			synchronized (printMutex) { 
+//			synchronized (printMutex) { 
 				System.out.printf(prefix + "TRACE: " + msg + "\n", objects);
-				System.out.flush();
-			}
+//				System.out.flush();
+//			}
 		}
 	}
 	
 	public void _warning(String msg, Object ...objects) {
 		if(logLevel <= WARNING) {
-			synchronized (printMutex) { 
+//			synchronized (printMutex) { 
 				System.out.printf(prefix + "WARNING: " + msg + "\n", objects);
-				System.out.flush();
-			}
+//				System.out.flush();
+//			}
 		}
 	}
 	
 	public void _error(String msg, Object ...objects) {
 		if(logLevel <= ERROR) {
-			synchronized (printMutex) { 
+//			synchronized (printMutex) { 
 				System.err.printf(prefix + "ERROR: " + msg + "\n", objects);
 				System.err.flush();
 				//TODO: needed for stdout and stderr synchronization, later think about sth better
-				try {
-					Thread.sleep(5);
-				} catch (InterruptedException e) {}
-			}
+//				try {
+//					Thread.sleep(5);
+//				} catch (InterruptedException e) {}
+//			}
 		}
 	}
 	
 	public void _bug(String msg, Object ...objects) {
 		if(logLevel <= BUG) {
-			synchronized (printMutex) { 
+//			synchronized (printMutex) { 
 				System.err.printf(prefix + "BUG: " + msg + "\n", objects);
 				System.err.flush();
 				//TODO: needed for stdout and stderr synchronization, later think about sth better
-				try {
-					Thread.sleep(5);
-				} catch (InterruptedException e) {}
-			}
+//				try {
+//					Thread.sleep(5);
+//				} catch (InterruptedException e) {}
+//			}
 		}
 	}
 	

@@ -52,6 +52,10 @@ public class Intersection {
 		return getPath(begin, getNext(begin, length - 1));
 	}
 	
+	public List<CenterPlace> getPath(AgentState a) {
+		return getPath(getFirstPlace(a), getLastPlace(a));
+	}
+	
 	//first center place after leaving direction d
 	public CenterPlace getFirstPlace(Direction d) {
 		return places.get(d.num);
@@ -116,8 +120,8 @@ public class Intersection {
 	}
 	
 	public Boolean trajectoriesIntersect(AgentState car1, AgentState car2) {
-		//Identical trajectories don't intersect
-		if(car1.place == car2.place && car1.place != Direction.C)
+		//Parallel trajectories don't intersect
+		if(isInFront(car1, car2) || isInFront(car2, car1))
 			return false;
 		//If trajectories intersect, then they intersect on first center position of one of the agents 
 		//because agents drive in center in the same cyclic direction
@@ -130,7 +134,7 @@ public class Intersection {
 		
 	public Boolean isInFront(AgentState me, AgentState car) {
 		if(car.place == Direction.C) 
-			return false;
+			return getPath(me).contains(places.get(car.position));
 		if(me.place != car.place)
 			return me.dest == car.place && car.place == car.dest;
 		return ((me.place == me.dest) == (car.place == car.dest)) && me.position < car.position;

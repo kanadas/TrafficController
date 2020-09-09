@@ -88,8 +88,8 @@ public class Simulation extends AbleDefaultAgent {
 		if(cur_step == steps) {
 			finish();
 		} else {
-			notifyAbleEventListeners(new AbleEvent(this, new NextRoundMsg(Collections.unmodifiableList(this.curr_state))));
 			cur_step++;	
+			notifyAbleEventListeners(new AbleEvent(this, new NextRoundMsg(cur_step, Collections.unmodifiableList(this.curr_state))));
 		}
 	}
 	
@@ -102,9 +102,12 @@ public class Simulation extends AbleDefaultAgent {
 			synchronized(mutex) {
 				finished.set(msg.agent_id);
 				velocity[msg.agent_id] = msg.speed;
-				if(finished.cardinality() == agents.size())
-					finishRound();
 			}
+			logger.debug("%d Agents finished", finished.cardinality());
+			if(finished.cardinality() == agents.size()) {
+				finishRound();
+			}
+
 		} else if(evt.getArgObject() instanceof AcceptMsg) {
 			AcceptMsg msg = (AcceptMsg) evt.getArgObject();
 			agentSendMessage(msg.agent_id);	
@@ -174,7 +177,7 @@ public class Simulation extends AbleDefaultAgent {
 			if(state.place != Direction.C && state.waiting_time == 0 && state.position == 0 && velocity[i] == 0) 
 				starting_free[state.place.num] = false;
 		}
-		for(int i = 0; i < agents.size(); ++i) {
+		for(int i = 0; i < agents.size(); ++i) {	
 			AgentState state = prev_state.get(i);
 			Agent agent = agents.get(i);
 			int position = state.position + velocity[i];
@@ -197,7 +200,9 @@ public class Simulation extends AbleDefaultAgent {
 					if(starting_free[state.place.num]) {
 						num_intersection_cross++;
 						starting_free[state.place.num] = false;
-						if(agent.isRandomHaste()) agent.setHaste(rand.nextInt() % 6);
+						if(agent.isRandomHaste()) {
+							agent.setHaste(rand.nextInt(6));
+						}
 						haste_cross[agent.getHaste()]++;
 					} else {
 						//Wait till starting place frees

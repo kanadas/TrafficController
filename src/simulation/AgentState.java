@@ -29,4 +29,28 @@ public final class AgentState {
 	public Integer getAgentId() {
 		return agent_id;
 	}
+
+	public int getPosition() {
+		return position;
+	}
+
+	public Direction getPlace() {
+		return place;
+	}
+
+	public Direction getDest() {
+		return dest;
+	}
+
+	public int getWaitingTime() {
+		return waiting_time;
+	}
+
+	public int getMaxSpeed() {
+		return max_speed;
+	}
+
+	public int getHaste() {
+		return haste;
+	}
 }

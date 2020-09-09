@@ -1,11 +1,12 @@
 package messages;
 
-public class FinishedStepMsg {
+public class FinishedStepMsg extends SimulationMsg {
 
 	public final int agent_id; 
 	public final int speed;
 	
-	public FinishedStepMsg(int agent_id, int speed) {
+	public FinishedStepMsg(int turn_id, int agent_id, int speed) {
+		super(turn_id);
 		this.agent_id = agent_id;
 		this.speed = speed;
 	}

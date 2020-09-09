@@ -12,7 +12,8 @@ public class CenterPlace {
 		this.id = id;
 		this.agents = new ArrayList<Integer>();
 		this.future_agents = new ArrayList<Integer>();
-		for(int i = 0; i < len; ++i) {
+		//len + 3 is max distance, last index is guard
+		for(int i = 0; i <= len + 4; ++i) {
 			future_agents.add(0);
 		}
 	}
