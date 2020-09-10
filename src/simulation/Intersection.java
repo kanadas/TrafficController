@@ -139,5 +139,4 @@ public class Intersection {
 			return me.dest == car.place && car.place == car.dest;
 		return ((me.place == me.dest) == (car.place == car.dest)) && me.position < car.position;
 	}
-
 }

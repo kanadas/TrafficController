@@ -303,6 +303,7 @@ public class Simulation extends AbleDefaultAgent {
 	}
 	
 	private void finish() {
+		logger.info("Intersection crosses: %d", num_intersection_cross);
 		System.out.printf("%.4f", sum_intersection_time / num_intersection_cross);
 		for(int i = 0; i < HASTE_LEVELS; ++i) {
 			if(haste_cross[i] == 0) {
@@ -313,5 +314,16 @@ public class Simulation extends AbleDefaultAgent {
 		}
 		System.out.printf("\n%d %d %.4f\n", max_messages, min_messages, (sum_messages / num_intersection_cross));
 		latch.countDown();
+	}
+	
+	//>0 - first greater, <0 second greter
+	public static int compareOffers(int offer1, int haste1, int id1, int offer2, int haste2, int id2) {
+		if(offer1 == offer2) {
+			if(haste1 == haste2) {
+				return Integer.compare(id2, id1); //lesser id wins
+			}
+			return Integer.compare(haste1, haste2);
+		}
+		return Integer.compare(offer1, offer2);
 	}
 }

@@ -3,11 +3,11 @@ package logging;
 public class Logger {
 	public static final int DEBUG = 0;
 	public static final int TRACE = 1;
-	public static final int WARNING = 2;
+	public static final int INFO = 2;
 	public static final int ERROR = 3;
 	public static final int BUG = 4;
 	//DEBUGGING
-	private static int logLevel = 0; 
+	private static int logLevel = 1; 
 	
 	public static void setLogLevel(int logLevel) {
 		Logger.logLevel = logLevel;
@@ -42,10 +42,10 @@ public class Logger {
 		}
 	}
 	
-	public void _warning(String msg, Object ...objects) {
-		if(logLevel <= WARNING) {
+	public void _info(String msg, Object ...objects) {
+		if(logLevel <= INFO) {
 //			synchronized (printMutex) { 
-				System.out.printf(prefix + "WARNING: " + msg + "\n", objects);
+				System.out.printf(prefix + "INFO: " + msg + "\n", objects);
 //				System.out.flush();
 //			}
 		}
@@ -85,8 +85,8 @@ public class Logger {
 		_trace(msg);
 	}
 	
-	public void warning(String msg) {
-		_warning(msg);
+	public void info(String msg) {
+		_info(msg);
 	}
 	
 	public void error(String msg) {
@@ -105,8 +105,8 @@ public class Logger {
 		_trace(msg, a1);
 	}
 	
-	public void warning(String msg, Object a1) {
-		_warning(msg, a1);
+	public void info(String msg, Object a1) {
+		_info(msg, a1);
 	}
 	
 	public void error(String msg, Object a1) {
@@ -125,8 +125,8 @@ public class Logger {
 		_trace(msg, a1, a2);
 	}
 	
-	public void warning(String msg, Object a1, Object a2) {
-		_warning(msg, a1, a2);
+	public void info(String msg, Object a1, Object a2) {
+		_info(msg, a1, a2);
 	}
 	
 	public void error(String msg, Object a1, Object a2) {
@@ -145,8 +145,8 @@ public class Logger {
 		_trace(msg, a1, a2, a3);
 	}
 	
-	public void warning(String msg, Object a1, Object a2, Object a3) {
-		_warning(msg, a1, a2, a3);
+	public void info(String msg, Object a1, Object a2, Object a3) {
+		_info(msg, a1, a2, a3);
 	}
 	
 	public void error(String msg, Object a1, Object a2, Object a3) {

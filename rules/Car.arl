@@ -43,7 +43,8 @@ ruleset Car {
 		static List intersecting_agents = new ArrayList();
 		static Integer offer;
 		static List accepted_offers;
-		
+			
+		Integer result_offer;
 		Double expected_wait_time;
 		Double expected_total_time;
 		Boolean accepted;
@@ -77,7 +78,7 @@ ruleset Car {
 			if(paying) {
 				payment = payment - offer;
 			}
-			logger.trace("speed = %d, payment = %d", speed, payment);	
+			logger.info("speed = %d, payment = %d", speed, payment);	
 			new_points = agent.getPoints() + payment;
 			agent.setPoints(new_points);
 			res = Action.commit(speed);
@@ -135,13 +136,13 @@ ruleset Car {
 			//If I'm after intersection, then greedly take max possible speed
 			speed = max_dist;
 			res = Action.commit(speed);
-			logger.trace("greedy speed: %d", speed);
+			logger.info("greedy speed: %d", speed);
 		}
 	[1] : preconditions (my_state.place != Direction.C and my_state.position + max_dist < len) decisions {
 			//If I cannot arrive intersection, act greedly
 			speed = max_dist;
 			res = Action.commit(speed);
-			logger.trace("greedy speed: %d", speed);
+			logger.info("greedy speed: %d", speed);
 		}
 	[0] : preconditions (true) decisions {
 			min_dist = max_dist;
@@ -150,7 +151,7 @@ ruleset Car {
 			if(min_dist == max_dist) {
 				speed = max_dist;
 				res = Action.commit(speed);			
-				logger.trace("greedy speed: %d", speed);
+				logger.info("greedy speed: %d", speed);
 			} else {
 				invokeRuleBlock("valuePlaces");
 				logger.debug("expected_total_time = %f", expected_total_time);
@@ -231,7 +232,8 @@ ruleset Car {
 	}
 	: when(OfferMsg m (intersecting_agents.contains(m.agent_id))) do {
 			car = cur_state.get(m.agent_id);
-			if(agent.acceptsOffer(car, m.offer, offer)) {
+			if(Simulation.compareOffers(m.offer, car.getHaste(), car.getAgentId(), offer, my_state.getHaste(), my_state.getAgentId()) > 0 ||
+					agent.acceptsOffer(car, m.offer, offer)) {
 				logger.debug("accepted offer %d from agent %d", m.offer, m.agent_id);
 				accepted_offers.add(m.agent_id);
 			} 
@@ -239,6 +241,7 @@ ruleset Car {
 	}
 	
 	//TODO: solve whole accept reject graph
+	//TODO: check on medium round 39
 	
 	void processAccepts() using PatternMatch {
 	variables {
@@ -261,21 +264,21 @@ ruleset Car {
 				logger.debug("Cannot go further than %d, new payment = %d", distance, new_payment);
 				speed = intersection.distance(my_state, p) - 1;
 				payment = new_payment;
-				paying = false;
 			}
 		}
 	}
 	
 	void checkAgents(CenterPlace p) using PatternMatch {
-	: logger.trace("checking agents for place %d", p.getId());
-	: when(AgentState car (p.getAgents().contains(car.agent_id))) do {
+	: logger.debug("checking agents for place %d", p.getId());
+	: when(AgentState car (p.getAgents().contains(car.agent_id)) &
+		OfferMsg offer (offer.agent_id == car.agent_id)) do {
 			invokeRuleBlock("checkIfAccepted(CenterPlace,AgentState)", new Object[] {p, car});
 			if(accepted) {
 				if(accepted_offers.contains(car.agent_id)) {
-					logger.trace("agent %d blocks my path on position %d", car.agent_id, p.getId());
-					invokeRuleBlock("getPayment(CenterPlace,AgentState)", new Object[] {p,car});
+					logger.info("agent %d blocks my path on position %d", car.agent_id, p.getId());
+					new_payment = result_offer;
 				} else {
-					logger.trace("I block path of agent %d position %d", car.agent_id, p.getId());
+					logger.info("I block path of agent %d position %d", car.agent_id, p.getId());
 					accepted = false;
 					paying = true;
 				}
@@ -285,23 +288,36 @@ ruleset Car {
 	}
 	
 	void checkIfAccepted(CenterPlace dest, AgentState car) using PatternMatch {
-	: logger.debug("checking if %s is accepted for %s", String.valueOf(dest), String.valueOf(car));
+	: logger.debug("checking if %s is accepted for %s", dest.toString(), car.toString());
 	: accepted = true;
-	//Find place on which car is forbidden to enter	
-	: when(CenterPlace p (accepted) &
-		AcceptMsg msg (msg.agent_id != car.getAgentId() and p.onPathOf(msg.agent_id) and !msg.offers.contains(car.getAgentId())) &
-		OfferMsg offer (offer.agent_id == car.getAgentId())) do {			
-			if(intersection.distance(car, p) <= intersection.distance(car, dest)) {
+	//Find place on which car is forbidden to enter that lays on my path to the dest
+	: when(CenterPlace p (intersection.distance(car, p) <= intersection.distance(car, dest)) &
+		AgentState car2 (car2 != car and p.onPathOf(car2.agent_id)) &
+		AcceptMsg my_msg (my_msg.agent_id == car.getAgentId() and my_msg.offers.contains(car2.getAgentId())) &
+		OfferMsg my_offer (my_offer.agent_id == car.getAgentId()) &
+		OfferMsg his_offer (his_offer.agent_id == car.getAgentId())
+		) do { 
+			if(Simulation.compareOffers(my_offer.offer, car.getHaste(), car.getAgentId(), his_offer.offer, car2.getHaste(), car2.getAgentId()) > 0) {
+				logger.debug("Agent %d let Agent %d go", car.getAgentId(), car2.getAgentId());
+				//If let him go, then not going further even if he cannot go (to break possible accept cycle)
 				accepted = false;
-				logger.debug("place %d not accepted", dest.getId());
+				return;
+			}
+			//Recursively check if he can get to the point where he blocks me
+			invokeRuleBlock("checkIfAccepted(CenterPlace,AgentState)", new Object[] {p, car2});
+			//if he can go then I can't
+			accepted = !accepted;
+			if(!accepted) {
+				logger.debug("place %d not accepted for Agent %d", dest.getId(), car.getAgentId());
+				return;
 			}
 		}
 	}
-
+	
 //For unknown reason, without this first unused parameter, function doesn't work anymore
-	void getPayment(CenterPlace p, AgentState car) using PatternMatch {
+	void getOffer(CenterPlace p, AgentState car) using PatternMatch {
 	: when(OfferMsg offer (offer.agent_id == car.getAgentId())) do {
-			new_payment = offer.offer;
+			result_offer = offer.offer;
 		}
 	}	
 	
@@ -342,9 +358,7 @@ ruleset Car {
 	: when(OfferMsg msg (msg.agent_id == car.getAgentId())) do {
 			logger.debug("Checking if agent %d with offer %d is allowed to enter center", car.getAgentId(), msg.offer);
 			//if he has better offer than me
-			if(msg.offer > offer || 
-					(msg.offer == offer && (car.getHaste() > my_state.getHaste() || 
-					(car.getHaste() == my_state.getHaste() && car.getAgentId() < my_state.getAgentId())))) {
+			if(Simulation.compareOffers(msg.offer, car.getHaste(), car.getAgentId(), offer, my_state.getHaste(), my_state.getAgentId()) > 0) {
 				invokeRuleBlock("checkIfAccepted(CenterPlace,AgentState)", new Object[] {intersection.getFirstPlace(car), car});
 			} else {
 				accepted = false;

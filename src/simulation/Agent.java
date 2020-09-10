@@ -39,6 +39,7 @@ public class Agent extends AbleDefaultAgent {
 	private ArrayList<OfferMsg> offers;
 	private ArrayList<AcceptMsg> accepts;
 	private boolean got_offers;
+	private boolean got_accepts;
 	private Object mutex = new Object(); 
 	private boolean finished;
 	private int round_id;
@@ -123,6 +124,7 @@ public class Agent extends AbleDefaultAgent {
 				offers.add(msg);
 				received.set(msg.agent_id);			
 			}
+			logger.debug("Responding %s Received %d messages, from: %s", String.valueOf(msg), received.cardinality(), received.toString());
 			if(received.cardinality() == n_agents) {
 				gotAllOffers();
 			}
@@ -133,6 +135,7 @@ public class Agent extends AbleDefaultAgent {
 				if(got_offers) received.set(msg.agent_id);
 				else commited.set(msg.agent_id);
 			}
+			logger.debug("Responding %s Received %d messages, from: %s", String.valueOf(msg), received.cardinality(), received.toString());
 			if(got_offers && received.cardinality() == n_agents) {
 				gotAllAccepts();
 			}
@@ -140,11 +143,9 @@ public class Agent extends AbleDefaultAgent {
 			FinishedStepMsg msg = (FinishedStepMsg) evt.getArgObject();
 			synchronized(mutex) {
 				commited.set(msg.agent_id);
-				if(!received.get(msg.agent_id)) {
-					received.set(msg.agent_id);
-				}
+				received.set(msg.agent_id);
 			}
-			logger.debug("Received %d messages, from: %s", received.cardinality(), received.toString());
+			logger.debug("Responding %s Received %d messages, from: %s", String.valueOf(msg), received.cardinality(), received.toString());
 			if(received.cardinality() == n_agents) {
 				if(got_offers) gotAllAccepts();
 				else gotAllOffers();
@@ -154,21 +155,25 @@ public class Agent extends AbleDefaultAgent {
 	
 	private void gotAllOffers() throws AbleException {
 		logger.debug("will process offers: %s", offers.toString());
+		synchronized(mutex) {
+			if(got_offers) {
+				return;
+			}
+			got_offers = true;
+			received.clear();
+			received.or(commited);
+			for(AcceptMsg acc: accepts) received.set(acc.agent_id);
+			received.set(this.agent_id);
+		}
 		try {
 			Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, offers, null});
 			Action res = (Action) output[0];
-			synchronized(mutex) {
-				received.clear();
-				received.or(commited);
-				got_offers = true;
-				for(AcceptMsg acc: accepts) received.set(acc.agent_id);
-				received.set(this.agent_id);
-			}
 			if(res.isAccept()) {
 				notifyAbleEventListeners(new AbleEvent(this, new AcceptMsg(round_id, this.agent_id, res.getAccepts())));
 			} else { //it cannot be offer
+				FinishedStepMsg response = new FinishedStepMsg(round_id, this.agent_id, res.getFinalSpeed());
 				resetState();
-				notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(round_id, this.agent_id, res.getFinalSpeed())));
+				notifyAbleEventListeners(new AbleEvent(this, response));
 			}
 			if(received.cardinality() == n_agents && !finished) {
 				gotAllAccepts();
@@ -182,11 +187,18 @@ public class Agent extends AbleDefaultAgent {
 	
 	private void gotAllAccepts() throws AbleException {
 		logger.debug("will process accepts");
+		synchronized(mutex) {
+			if(got_accepts) {
+				return;
+			}
+			got_accepts = true;
+		}
 		try {
 			Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, accepts});
 			Action res = (Action) output[0];
+			FinishedStepMsg response = new FinishedStepMsg(round_id, this.agent_id, res.getFinalSpeed());
 			resetState();
-			notifyAbleEventListeners(new AbleEvent(this, new FinishedStepMsg(round_id, this.agent_id, res.getFinalSpeed())));
+			notifyAbleEventListeners(new AbleEvent(this, response));
 			logger.trace("finished");
 		} catch (Exception e) {
 			System.err.println(e.getMessage());
@@ -201,6 +213,7 @@ public class Agent extends AbleDefaultAgent {
 			offers = new ArrayList<OfferMsg>();
 			accepts = new ArrayList<AcceptMsg>();
 			got_offers = false;
+			got_accepts = false;
 			round_id++;
 			finished = true;
 		}
@@ -212,14 +225,10 @@ public class Agent extends AbleDefaultAgent {
 		return (int) Math.round(max_spend * (1.0 - 1.0/(0.5*expected_wait_time + 1.0)));
 	}
 	
-	//Accepting only the offers it must
+	//Only accepting the ones that must
 	public Boolean acceptsOffer(AgentState sender, int offer, int my_offer) {		
 		logger.debug("Checking if offer %d from %d is better than my offer %d", offer, sender.agent_id, my_offer);
-		if(offer != my_offer)
-			return offer > my_offer;
-		if(sender.haste != haste)
-			return sender.haste > haste;
-		return sender.agent_id < agent_id;
+		return false;
 	}
 	
 	public Integer getAgentId() {

@@ -23,4 +23,11 @@ public class OfferMsg extends SimulationMsg {
 		return offer;
 	}
 	
+	//minimal rules
+	public boolean betterThan(int my_haste, OfferMsg msg, int his_haste) {
+		return offer > msg.offer || 
+			(offer == msg.offer && (my_haste > his_haste|| 
+			(my_haste == his_haste && agent_id < msg.agent_id)));
+	}
+	
 }
