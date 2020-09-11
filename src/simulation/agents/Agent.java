@@ -1,6 +1,9 @@
-package simulation;
+package simulation.agents;
 
 import messages.*;
+import simulation.Action;
+import simulation.AgentState;
+import simulation.Direction;
 import logging.Logger; 
 	
 import java.util.BitSet;
@@ -17,7 +20,7 @@ import com.ibm.able.rules.AbleRuleSetImpl;
 public class Agent extends AbleDefaultAgent {
 
 	private static final long serialVersionUID = 9143011496195622412L;
-	private Logger logger;
+	protected Logger logger;
 	
 	private final Integer agent_id;
 	private int length;
@@ -75,8 +78,7 @@ public class Agent extends AbleDefaultAgent {
 	}	
 	
 	@Override
-	public void processAbleEvent(AbleEvent evt) throws AbleException {			
-		//logger.debug("Received event: %s",  evt.getArgObject().toString());	
+	public void processAbleEvent(AbleEvent evt) throws AbleException {
 		if(!(evt.getArgObject() instanceof SimulationMsg)) {
 			return;
 		}
@@ -91,7 +93,6 @@ public class Agent extends AbleDefaultAgent {
 			if(mystate.waiting_time == 0) {
 				ruleSet.parseFromARL(rules);
 				ruleSet.init();
-				
 				logger.debug("will process state");
 				try {
 					Object[] output = (Object[]) ruleSet.process(new Object[] {this, cur_state, null, null});
@@ -107,11 +108,14 @@ public class Agent extends AbleDefaultAgent {
 				resetState();
 			} else if(res.isAccept()) {
 				send = new AcceptMsg(round_id, this.agent_id, res.getAccepts());
+				synchronized(mutex) {
+					received.set(this.agent_id);
+				}
 			} else {
 				send = new OfferMsg(round_id, this.agent_id, res.getOffer());
-			}
-			synchronized(mutex) {
-				received.set(this.agent_id);
+				synchronized(mutex) {
+					received.set(this.agent_id);
+				}
 			}
 			notifyAbleEventListeners(new AbleEvent(this, send));	
 			logger.trace("finished");

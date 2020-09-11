@@ -11,7 +11,7 @@ ruleset Car {
 	import java.util.Collections;
 	import java.util.List;
 	import logging.Logger;
-	import simulation.Agent;
+	import simulation.agents.Agent;
 	import simulation.Simulation;
 	import simulation.AgentState;
 	import simulation.Direction;
@@ -44,7 +44,6 @@ ruleset Car {
 		static Integer offer;
 		static List accepted_offers;
 			
-		Integer result_offer;
 		Double expected_wait_time;
 		Double expected_total_time;
 		Boolean accepted;
@@ -270,19 +269,25 @@ ruleset Car {
 	
 	void checkAgents(CenterPlace p) using PatternMatch {
 	: logger.debug("checking agents for place %d", p.getId());
-	: when(AgentState car (p.getAgents().contains(car.agent_id)) &
-		OfferMsg offer (offer.agent_id == car.agent_id)) do {
+	: accepted = false;
+	: when(AgentState car (!accepted && p.getAgents().contains(car.agent_id)) &
+		OfferMsg msg (msg.agent_id == car.agent_id) &
+		AcceptMsg accept (accept.agent_id == car.agent_id)) do {
 			invokeRuleBlock("checkIfAccepted(CenterPlace,AgentState)", new Object[] {p, car});
 			if(accepted) {
-				if(accepted_offers.contains(car.agent_id)) {
+				if(accept.offers.contains(my_state.agent_id) && 
+						Simulation.compareOffers(msg.offer, car.haste, car.agent_id, offer, my_state.haste, my_state.agent_id) > 0) {
+					logger.info("I was let go by %d", car.agent_id);
+					accepted = false;
+					paying = true;
+				} else if(accepted_offers.contains(car.agent_id)) {
 					logger.info("agent %d blocks my path on position %d", car.agent_id, p.getId());
-					new_payment = result_offer;
+					new_payment = msg.offer;
 				} else {
 					logger.info("I block path of agent %d position %d", car.agent_id, p.getId());
 					accepted = false;
 					paying = true;
 				}
-				return;
 			}
 		}
 	}
@@ -313,14 +318,7 @@ ruleset Car {
 			}
 		}
 	}
-	
-//For unknown reason, without this first unused parameter, function doesn't work anymore
-	void getOffer(CenterPlace p, AgentState car) using PatternMatch {
-	: when(OfferMsg offer (offer.agent_id == car.getAgentId())) do {
-			result_offer = offer.offer;
-		}
-	}	
-	
+		
 	//To avoid deadlocks, if there is possibility of 4 agents in the centre, the one with lowest offer is not allowed to enter
 	Boolean checkDeadlock() using Script {
 	variables {

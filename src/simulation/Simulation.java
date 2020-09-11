@@ -1,6 +1,7 @@
 package simulation;
 
 import messages.*;
+import simulation.agents.Agent;
 import logging.Logger;
 import java.util.ArrayList;
 import java.util.Arrays;

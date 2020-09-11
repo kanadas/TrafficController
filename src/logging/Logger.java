@@ -7,13 +7,12 @@ public class Logger {
 	public static final int ERROR = 3;
 	public static final int BUG = 4;
 	//DEBUGGING
-	private static int logLevel = 1; 
+	private static int logLevel = 0; 
 	
 	public static void setLogLevel(int logLevel) {
 		Logger.logLevel = logLevel;
 	}
 	
-	private static Object printMutex = new Object();
 	private String prefix;
 	
 	public Logger(Integer agentId) {
@@ -26,54 +25,33 @@ public class Logger {
 	
 	public void _debug(String msg, Object ...objects) {
 		if(logLevel <= DEBUG) {
-//			synchronized (printMutex) { 
-				System.out.printf(prefix + "DEBUG: " + msg + "\n", objects);
-//				System.out.flush();
-//			}
+			System.out.printf(prefix + "DEBUG: " + msg + "\n", objects);
 		}
 	}
 	
 	public void _trace(String msg, Object ...objects) {		
 		if(logLevel <= TRACE) {
-//			synchronized (printMutex) { 
-				System.out.printf(prefix + "TRACE: " + msg + "\n", objects);
-//				System.out.flush();
-//			}
+			System.out.printf(prefix + "TRACE: " + msg + "\n", objects);
 		}
 	}
 	
 	public void _info(String msg, Object ...objects) {
 		if(logLevel <= INFO) {
-//			synchronized (printMutex) { 
-				System.out.printf(prefix + "INFO: " + msg + "\n", objects);
-//				System.out.flush();
-//			}
+			System.out.printf(prefix + "INFO: " + msg + "\n", objects);
 		}
 	}
 	
 	public void _error(String msg, Object ...objects) {
 		if(logLevel <= ERROR) {
-//			synchronized (printMutex) { 
-				System.err.printf(prefix + "ERROR: " + msg + "\n", objects);
-				System.err.flush();
-				//TODO: needed for stdout and stderr synchronization, later think about sth better
-//				try {
-//					Thread.sleep(5);
-//				} catch (InterruptedException e) {}
-//			}
+			System.err.printf(prefix + "ERROR: " + msg + "\n", objects);
+			System.err.flush();
 		}
 	}
 	
 	public void _bug(String msg, Object ...objects) {
 		if(logLevel <= BUG) {
-//			synchronized (printMutex) { 
-				System.err.printf(prefix + "BUG: " + msg + "\n", objects);
-				System.err.flush();
-				//TODO: needed for stdout and stderr synchronization, later think about sth better
-//				try {
-//					Thread.sleep(5);
-//				} catch (InterruptedException e) {}
-//			}
+			System.err.printf(prefix + "BUG: " + msg + "\n", objects);
+			System.err.flush();
 		}
 	}
 	

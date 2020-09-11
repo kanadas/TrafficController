@@ -6,6 +6,8 @@ import java.util.concurrent.CountDownLatch;
 
 import com.ibm.able.AbleException;
 
+import simulation.agents.*;
+
 public class TrafficApp {
 
 	public static void main(String[] args){
@@ -25,12 +27,40 @@ public class TrafficApp {
 				int haste = 0;
 				boolean random_haste = s_haste.equals("?");
 				if(!random_haste) haste = Integer.parseInt(s_haste); 
-				//String type = scanner.next(); //TODO
+				String type = scanner.next(); //TODO
 				int max_speed = scanner.nextInt();
 				int points = scanner.nextInt();
-				agents.add(new Agent(length, i, t_start, Direction.fromString(from), Direction.fromString(dest), 
-						t_from, t_dest, haste, random_haste, max_speed, points));
-			}			
+				Agent agent;
+				switch(type) {
+				case "_":
+					agent = new Agent(length, i, t_start, Direction.fromString(from), Direction.fromString(dest), 
+							t_from, t_dest, haste, random_haste, max_speed, points);
+					break;
+				case "R":
+					agent = new Righteous(length, i, t_start, Direction.fromString(from), Direction.fromString(dest), 
+							t_from, t_dest, haste, random_haste, max_speed, points);
+					break;
+				case "H":
+					agent = new Hoarder(length, i, t_start, Direction.fromString(from), Direction.fromString(dest), 
+							t_from, t_dest, haste, random_haste, max_speed, points);
+					break;
+				case "N":
+					agent = new Nervous(length, i, t_start, Direction.fromString(from), Direction.fromString(dest), 
+							t_from, t_dest, haste, random_haste, max_speed, points);
+					break;
+				case "F":
+					agent = new Frustrated(length, i, t_start, Direction.fromString(from), Direction.fromString(dest), 
+							t_from, t_dest, haste, random_haste, max_speed, points);
+					break;
+				case "A":
+					agent = new Altruistic(length, i, t_start, Direction.fromString(from), Direction.fromString(dest), 
+							t_from, t_dest, haste, random_haste, max_speed, points);
+					break;
+				default:
+					throw new IllegalArgumentException("Unknown agent type: " + type);
+				}
+				agents.add(agent);
+			}
 			scanner.close();
 			CountDownLatch latch = new CountDownLatch(1);
 			Simulation sim = new Simulation(length, n_steps, agents, latch);
