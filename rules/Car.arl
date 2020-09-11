@@ -217,7 +217,7 @@ ruleset Car {
 	}
 		
 	void processOffers() using Script {
-	: logger.trace("processing Offers");
+	: logger.info("processing Offers");
 	: wm.assertAll(offers);
 	: accepted_offers = new ArrayList();
 	: logger.debug("my offer = %d", offer);  
@@ -246,7 +246,7 @@ ruleset Car {
 	variables {
 		Integer distance;
 	}
-	: logger.trace("processing Accepts");
+	: logger.info("processing Accepts");
 	: wm.assertAll(accepts);
 	: speed = max_dist;
 	: paying = false;
@@ -277,17 +277,22 @@ ruleset Car {
 			if(accepted) {
 				if(accept.offers.contains(my_state.agent_id) && 
 						Simulation.compareOffers(msg.offer, car.haste, car.agent_id, offer, my_state.haste, my_state.agent_id) > 0) {
-					logger.info("I was let go by %d", car.agent_id);
+					logger.debug("I was let go by %d", car.agent_id);
 					accepted = false;
 					paying = true;
 				} else if(accepted_offers.contains(car.agent_id)) {
-					logger.info("agent %d blocks my path on position %d", car.agent_id, p.getId());
+					logger.debug("agent %d blocks my path on position %d", car.agent_id, p.getId());
 					new_payment = msg.offer;
 				} else {
-					logger.info("I block path of agent %d position %d", car.agent_id, p.getId());
+					logger.debug("I block path of agent %d position %d", car.agent_id, p.getId());
 					accepted = false;
 					paying = true;
 				}
+			} else if(accepted_offers.contains(car.agent_id) && 
+					Simulation.compareOffers(msg.offer, car.haste, car.agent_id, offer, my_state.haste, my_state.agent_id) < 0) {
+				//if i let him go then i cannot go even if he is blocked (to prevent accept cycles), but don't get payed for staying
+				logger.debug("I let go %d", car.agent_id);
+				accepted = true;
 			}
 		}
 	}

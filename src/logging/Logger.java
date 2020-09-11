@@ -6,8 +6,8 @@ public class Logger {
 	public static final int INFO = 2;
 	public static final int ERROR = 3;
 	public static final int BUG = 4;
-	//DEBUGGING
-	private static int logLevel = 0; 
+	
+	private static int logLevel = 3; 
 	
 	public static void setLogLevel(int logLevel) {
 		Logger.logLevel = logLevel;

@@ -146,7 +146,7 @@ public class Simulation extends AbleDefaultAgent {
 	//			   S
 	protected void finishRound() throws AbleException {
 		
-		logger.trace("Finished Round %d", cur_step);
+		logger.info("Finished Round %d", cur_step);
 		
 		//Position in the center [starting position][distance]
 		int turn_tb[][] = new int[4][3]; 
@@ -229,17 +229,17 @@ public class Simulation extends AbleDefaultAgent {
 					if(agent.getFrom() == dest) {
 						dest = agent.getDest();
 						waiting_time = agent.getTimeDest();
-						int nmsgs =  curr_msgs[i];
-						logger.debug("Agent %d send %d messages", agent.getAgentId(), nmsgs);
-						if(min_messages == null) min_messages = nmsgs;
-						else min_messages = Math.min(min_messages, nmsgs);
-						if(max_messages == null) max_messages = nmsgs;
-						else max_messages = Math.max(max_messages, nmsgs);
-						curr_msgs[i] = 0;
 					} else {
 						dest = agent.getFrom();
 						waiting_time = agent.getTimeFrom();
 					}
+					int nmsgs =  curr_msgs[i];
+					logger.debug("Agent %d send %d messages", agent.getAgentId(), nmsgs);
+					if(min_messages == null) min_messages = nmsgs;
+					else min_messages = Math.min(min_messages, nmsgs);
+					if(max_messages == null) max_messages = nmsgs;
+					else max_messages = Math.max(max_messages, nmsgs);
+					curr_msgs[i] = 0;
 				} else {
 					int turn = (dest.num - place.num + 4) % 4;
 					switch(turn) {

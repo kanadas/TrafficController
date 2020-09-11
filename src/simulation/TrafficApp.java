@@ -6,17 +6,20 @@ import java.util.concurrent.CountDownLatch;
 
 import com.ibm.able.AbleException;
 
+import logging.Logger;
 import simulation.agents.*;
 
 public class TrafficApp {
 
-	public static void main(String[] args){
-		try	{			
+	public static void main(String[] args) throws AbleException {
+		int log_level = Integer.parseInt(System.getProperty("LogLevel", "3"));
+		Logger.setLogLevel(log_level);
+		try	{
 			Scanner scanner = new Scanner(System.in);
+			ArrayList<Agent> agents = new ArrayList<Agent>();
 			int length = scanner.nextInt();
 			int n_agents = scanner.nextInt();
 			int n_steps = scanner.nextInt();
-			ArrayList<Agent> agents = new ArrayList<Agent>();
 			for(int i = 0; i < n_agents; ++i) {
 				int t_start = scanner.nextInt();
 				String from = scanner.next();
@@ -74,6 +77,10 @@ public class TrafficApp {
 			//Start simulation
 			sim.nextRound();
 			latch.await();
+			for(Agent a: agents) {
+				a.quitAll();
+			}
+			sim.quitAll();
 		} catch (AbleException ae){
 			if (ae.getExceptions() == null)
 				System.err.println(ae.getLocalizedMessage());
